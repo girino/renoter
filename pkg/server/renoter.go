@@ -61,6 +61,8 @@ func NewRenoter(ctx context.Context, privateKey string, relayURLs []string) (*Re
 		}
 	}
 
+	logging.Info("server.renoter.NewRenoter: Created Renoter instance, pubkey: %s (first 16 chars), %d relays", pubkey[:16], len(relayURLs))
+
 	return &Renoter{
 		PrivateKey: privateKey,
 		PublicKey:  pubkey,
