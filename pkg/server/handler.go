@@ -86,15 +86,27 @@ func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
 		logging.Info("server.handler.HandleEvent: Inner event is final event (kind %d), will forward to network", innerEvent.Kind)
 	}
 
+	// Double-check that inner event hasn't been published (defense in depth)
+	// This extra check catches any race condition edge cases
+	r.eventMu.RLock()
+	alreadyPublished := r.eventStore[innerEvent.ID]
+	r.eventMu.RUnlock()
+	if alreadyPublished {
+		logging.Warn("server.handler.HandleEvent: Inner event %s already in store before publishing (race condition?), skipping", innerEvent.ID)
+		return fmt.Errorf("inner event %s already published", innerEvent.ID)
+	}
+
 	// Publish inner event to all relays using SimplePool
 	relayURLs := r.GetRelayURLs()
-	logging.DebugMethod("server.handler", "HandleEvent", "Publishing inner event %s to %d relays", innerEvent.ID, len(relayURLs))
+	logging.DebugMethod("server.handler", "HandleEvent", "Publishing inner event %s (kind %d) to %d relays", innerEvent.ID, innerEvent.Kind, len(relayURLs))
 	publishResults := r.GetPool().PublishMany(ctx, relayURLs, innerEvent)
 
 	// Collect results
 	successCount := 0
+	failedRelays := []string{}
 	for result := range publishResults {
 		if result.Error != nil {
+			failedRelays = append(failedRelays, result.RelayURL)
 			logging.Error("server.handler.HandleEvent: failed to publish inner event %s to relay %s: %v", innerEvent.ID, result.RelayURL, result.Error)
 		} else {
 			successCount++
@@ -103,10 +115,11 @@ func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
 	}
 
 	if successCount == 0 {
+		logging.Error("server.handler.HandleEvent: Failed to publish inner event %s to any relay. Failed relays: %v", innerEvent.ID, failedRelays)
 		return fmt.Errorf("failed to publish inner event %s to any relay", innerEvent.ID)
 	}
 
-	logging.Info("server.handler.HandleEvent: Successfully processed and forwarded event %s -> inner event %s (kind %d) to %d/%d relays", event.ID, innerEvent.ID, innerEvent.Kind, successCount, len(relayURLs))
+	logging.Info("server.handler.HandleEvent: Successfully processed and forwarded wrapper %s -> inner event %s (kind %d) to %d/%d relays", event.ID, innerEvent.ID, innerEvent.Kind, successCount, len(relayURLs))
 	return nil
 }
 
