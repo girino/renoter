@@ -30,13 +30,8 @@ func padEventToPowerOfTwo(event *nostr.Event) (*nostr.Event, error) {
 	}
 	currentSize := len(eventJSON)
 
-	// Calculate additional sizes that will be added if not present
-	// ID and signature are already present in events (they're signed), so we can ignore them
-	// We only need to account for the padding tag base size
-	idSize := 0
-	sigSize := 0
-
-	// Measure padding tag base size: ["padding",""]
+	// Calculate padding tag base size: ["padding",""]
+	// ID and signature are already present in signed events, so we only need to account for the padding tag overhead
 	testEventWithEmptyPadding := *event
 	if testEventWithEmptyPadding.Tags == nil {
 		testEventWithEmptyPadding.Tags = nostr.Tags{}
@@ -46,8 +41,8 @@ func padEventToPowerOfTwo(event *nostr.Event) (*nostr.Event, error) {
 	tagBaseSize := len(testJSONWithEmptyPadding) - currentSize
 	logging.DebugMethod("client.wrapper", "padEventToPowerOfTwo", "Padding tag base size: %d bytes", tagBaseSize)
 
-	// Calculate total size including missing fields and padding tag base
-	totalSize := currentSize + idSize + sigSize + tagBaseSize
+	// Calculate total size including padding tag base
+	totalSize := currentSize + tagBaseSize
 	logging.Info("client.wrapper.padEventToPowerOfTwo: tagBaseSize=%d, currentSize=%d, totalSize=%d", tagBaseSize, currentSize, totalSize)
 
 	// Find next power of 2 for the total size
