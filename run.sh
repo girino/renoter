@@ -77,6 +77,14 @@ fi
 CLIENT_LISTEN=${CLIENT_LISTEN:-":8080"}
 VERBOSE=${VERBOSE:-""}
 
+# Kill any existing renoter processes before starting (safety check)
+echo -e "${YELLOW}Checking for existing renoter processes...${NC}"
+pkill -f "renoter-server" 2>/dev/null && echo "  Killed existing renoter-server processes" || true
+pkill -f "renoter-client" 2>/dev/null && echo "  Killed existing renoter-client processes" || true
+pkill -f "go run.*cmd/server" 2>/dev/null && echo "  Killed existing go run server processes" || true
+pkill -f "go run.*cmd/client" 2>/dev/null && echo "  Killed existing go run client processes" || true
+sleep 1
+
 # Clean and build executables
 echo -e "${GREEN}Cleaning previous builds...${NC}"
 go clean -i ./cmd/client ./cmd/server 2>/dev/null || true
@@ -96,6 +104,8 @@ echo -e "${GREEN}Build successful${NC}"
 # Cleanup function to kill all processes
 cleanup() {
     echo -e "\n${YELLOW}Shutting down...${NC}"
+    
+    # First, try graceful shutdown by PID
     if [ ! -z "$SERVER_PID_1" ]; then
         echo "Killing Renoter 1 (PID: $SERVER_PID_1)"
         kill $SERVER_PID_1 2>/dev/null || true
@@ -112,10 +122,29 @@ cleanup() {
         echo "Killing client (PID: $CLIENT_PID)"
         kill $CLIENT_PID 2>/dev/null || true
     fi
+    
+    # Wait a moment for graceful shutdown
+    sleep 1
+    
+    # Force kill by process name as fallback (catches any processes that weren't killed by PID)
+    echo "Force killing any remaining renoter processes..."
+    pkill -f "renoter-server" 2>/dev/null || true
+    pkill -f "renoter-client" 2>/dev/null || true
+    pkill -f "./renoter-server" 2>/dev/null || true
+    pkill -f "./renoter-client" 2>/dev/null || true
+    
+    # Also kill any go run processes (in case they're still running from old runs)
+    pkill -f "go run.*cmd/server" 2>/dev/null || true
+    pkill -f "go run.*cmd/client" 2>/dev/null || true
+    
     wait $SERVER_PID_1 2>/dev/null || true
     wait $SERVER_PID_2 2>/dev/null || true
     wait $SERVER_PID_3 2>/dev/null || true
     wait $CLIENT_PID 2>/dev/null || true
+    
+    # Give processes a moment to fully terminate
+    sleep 1
+    
     echo -e "${GREEN}Shutdown complete${NC}"
     exit 0
 }
