@@ -50,8 +50,9 @@ func SetupRelay(relay *khatru.Relay, renterPath [][]byte, serverRelayURLs []stri
 		logging.DebugMethod("client.relay", "processEvent", "Successfully wrapped event %s -> %s", event.ID, wrappedEvent.ID)
 
 		// Publish wrapped event to all server relays using SimplePool
-		logging.DebugMethod("client.relay", "processEvent", "Publishing wrapped event %s to %d server relays", wrappedEvent.ID, len(serverRelayURLs))
+		logging.Info("client.relay.processEvent: [CLIENT PUBLISH] About to publish wrapped event %s to %d server relays via PublishMany", wrappedEvent.ID, len(serverRelayURLs))
 		publishResults := serverPool.PublishMany(ctx, serverRelayURLs, *wrappedEvent)
+		logging.Info("client.relay.processEvent: [CLIENT PUBLISH CALLED] PublishMany called for wrapped event %s", wrappedEvent.ID)
 
 		// Collect results
 		successCount := 0
