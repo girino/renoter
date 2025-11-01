@@ -55,15 +55,42 @@ func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
 		return fmt.Errorf("failed to deserialize inner event: %w", err)
 	}
 
-	// Recalculate ID for the inner event (it was padded before encryption, so ID should match padded structure)
-	innerEvent.ID = innerEvent.GetID()
+	// Remove padding tags from inner event before publishing
+	// The client padded the event before encryption, but kept the original ID and signature.
+	// Removing padding tags restores the original event structure, so the signature is valid again.
+	logging.DebugMethod("server.handler", "HandleEvent", "Removing padding tags from inner event before publishing")
+	originalTags := innerEvent.Tags
+	innerEvent.Tags = nostr.Tags{}
+	for _, tag := range originalTags {
+		if len(tag) > 0 && tag[0] != "padding" {
+			innerEvent.Tags = append(innerEvent.Tags, tag)
+		}
+	}
 	
-	// Note: Inner events were padded before encryption, which cleared their signatures.
-	// The signature field is empty. When these events are published (final events or wrapper events),
-	// they need to be signed. But wrapper events are already signed by the client.
-	// For final events, they will need to be signed by the original author, but we don't have their key.
-	// So we publish them as-is - if they're wrapper events, they're already signed.
-	// If they're final events, the signature was cleared during padding and they'll need to be signed externally.
+	// After removing padding, verify the event ID matches the original structure
+	originalID := innerEvent.ID
+	calculatedID := innerEvent.GetID()
+	if originalID != calculatedID {
+		// ID doesn't match - this shouldn't happen if padding was done correctly
+		logging.Error("server.handler.HandleEvent: inner event ID mismatch after removing padding: original=%s, calculated=%s", originalID, calculatedID)
+		return fmt.Errorf("inner event ID mismatch after removing padding")
+	}
+	
+	// Verify signature is valid for the unpadded event
+	if innerEvent.Sig != "" {
+		valid, err := innerEvent.CheckSignature()
+		if err != nil {
+			logging.Error("server.handler.HandleEvent: failed to check inner event signature: %v", err)
+			return fmt.Errorf("failed to check inner event signature: %w", err)
+		}
+		if !valid {
+			logging.Error("server.handler.HandleEvent: invalid signature for inner event %s", innerEvent.ID)
+			return fmt.Errorf("invalid signature for inner event")
+		}
+		logging.DebugMethod("server.handler", "HandleEvent", "Inner event signature verified: %s", innerEvent.ID)
+	} else {
+		logging.DebugMethod("server.handler", "HandleEvent", "Inner event has no signature (unsigned event)")
+	}
 	
 	// Note: The wrapper event (outer event) was already checked for replay attacks in ProcessEvent
 	// ProcessEvent ensures we don't process the same wrapper event twice, so HandleEvent

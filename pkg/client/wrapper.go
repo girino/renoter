@@ -131,7 +131,7 @@ func WrapEvent(originalEvent *nostr.Event, renterPath [][]byte) (*nostr.Event, e
 		innerEventCopy := *currentEvent
 		isWrapperEvent := innerEventCopy.Kind == 29000 // Wrapper events are kind 29000
 		hadSignature := innerEventCopy.Sig != ""
-		
+
 		// Clear signature before padding - padding changes event structure, invalidating any existing signature
 		if hadSignature {
 			innerEventCopy.Sig = ""
@@ -141,7 +141,7 @@ func WrapEvent(originalEvent *nostr.Event, renterPath [][]byte) (*nostr.Event, e
 				logging.DebugMethod("client.wrapper", "WrapEvent", "Cleared signature from original event before padding (signature will need original author's key to re-sign, layer %d)", i)
 			}
 		}
-		
+
 		paddedEvent, err := padEventToMultipleOf64(&innerEventCopy)
 		if err != nil {
 			logging.Error("client.wrapper.WrapEvent: failed to pad inner event at layer %d: %v", i, err)
