@@ -75,6 +75,7 @@ func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
 	// IMPORTANT: This should only be called once per inner event
 	relayURLs := r.GetRelayURLs()
 	logging.Info("server.handler.HandleEvent: [SERVER PUBLISH START] About to publish inner event %s (kind %d) to %d relays via PublishMany for wrapper %s", innerEvent.ID, innerEvent.Kind, len(relayURLs), event.ID)
+	logging.Info("server.handler.HandleEvent: [RELAY URLS] GetRelayURLs() returned: %v", relayURLs)
 	publishResults := r.GetPool().PublishMany(ctx, relayURLs, innerEvent)
 	logging.Info("server.handler.HandleEvent: [SERVER PUBLISH CALLED] PublishMany called for inner event %s (from wrapper %s)", innerEvent.ID, event.ID)
 	logging.DebugMethod("server.handler", "HandleEvent", "PublishMany started for inner event %s, collecting results...", innerEvent.ID)
@@ -168,11 +169,11 @@ func (r *Renoter) SubscribeToWrappedEvents(ctx context.Context) error {
 				logging.Info("server.handler.SubscribeToWrappedEvents: [CALLING HANDLEEVENT] About to call HandleEvent for event %s from relay %s", ev.ID, relayEvent.Relay.URL)
 				err = r.HandleEvent(ctx, ev)
 				logging.Info("server.handler.SubscribeToWrappedEvents: [HANDLEEVENT RETURNED] HandleEvent returned for event %s with error=%v", ev.ID, err != nil)
-				
+
 				// Mark as processed (regardless of success/failure)
 				processedEvents[ev.ID] = true
 				delete(processingEvents, ev.ID)
-				
+
 				if err != nil {
 					logging.Warn("server.handler.SubscribeToWrappedEvents: [HANDLEEVENT ERROR] Error handling event %s: %v", ev.ID, err)
 					continue
