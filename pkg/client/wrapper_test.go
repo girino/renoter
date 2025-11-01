@@ -3,7 +3,6 @@ package client
 import (
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"testing"
 
 	"github.com/nbd-wtf/go-nostr"
