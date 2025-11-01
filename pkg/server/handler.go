@@ -12,7 +12,7 @@ import (
 
 // HandleEvent handles a wrapped event by decrypting it and forwarding the inner event.
 func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
-	logging.Info("server.handler.HandleEvent: HandleEvent called for wrapper event: ID=%s", event.ID)
+	logging.Info("server.handler.HandleEvent: [HANDLEEVENT CALLED] HandleEvent called for wrapper event: ID=%s", event.ID)
 
 	// Verify signature (already done in ProcessEvent, but double-check)
 	valid, err := event.CheckSignature()
@@ -74,8 +74,9 @@ func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
 	// Publish inner event to all relays using SimplePool
 	// IMPORTANT: This should only be called once per inner event
 	relayURLs := r.GetRelayURLs()
-	logging.Info("server.handler.HandleEvent: About to publish inner event %s (kind %d) to %d relays via PublishMany", innerEvent.ID, innerEvent.Kind, len(relayURLs))
+	logging.Info("server.handler.HandleEvent: [PUBLISH START] About to publish inner event %s (kind %d) to %d relays via PublishMany", innerEvent.ID, innerEvent.Kind, len(relayURLs))
 	publishResults := r.GetPool().PublishMany(ctx, relayURLs, innerEvent)
+	logging.Info("server.handler.HandleEvent: [PUBLISH CALLED] PublishMany called for inner event %s", innerEvent.ID)
 	logging.DebugMethod("server.handler", "HandleEvent", "PublishMany started for inner event %s, collecting results...", innerEvent.ID)
 
 	// Collect results
@@ -141,11 +142,11 @@ func (r *Renoter) SubscribeToWrappedEvents(ctx context.Context) error {
 
 				// Deduplicate: skip if we already processed this event
 				if processedEvents[ev.ID] {
-					logging.Info("server.handler.SubscribeToWrappedEvents: Event %s already processed (received from relay %s, but previously processed), skipping", ev.ID, relayEvent.Relay.URL)
+					logging.Info("server.handler.SubscribeToWrappedEvents: [DUPLICATE DETECTED] Event %s already processed (received from relay %s, but previously processed), skipping", ev.ID, relayEvent.Relay.URL)
 					continue
 				}
 				processedEvents[ev.ID] = true
-				logging.Info("server.handler.SubscribeToWrappedEvents: Marked event %s as processed", ev.ID)
+				logging.Info("server.handler.SubscribeToWrappedEvents: [FIRST TIME] Marked event %s as processed (received from relay %s)", ev.ID, relayEvent.Relay.URL)
 
 				// Process the event (verify signature)
 				logging.Info("server.handler.SubscribeToWrappedEvents: About to ProcessEvent for event %s from relay %s", ev.ID, relayEvent.Relay.URL)
