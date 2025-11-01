@@ -55,6 +55,16 @@ func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
 		return fmt.Errorf("failed to deserialize inner event: %w", err)
 	}
 
+	// Recalculate ID for the inner event (it was padded before encryption, so ID should match padded structure)
+	innerEvent.ID = innerEvent.GetID()
+	
+	// Note: Inner events were padded before encryption, which cleared their signatures.
+	// The signature field is empty. When these events are published (final events or wrapper events),
+	// they need to be signed. But wrapper events are already signed by the client.
+	// For final events, they will need to be signed by the original author, but we don't have their key.
+	// So we publish them as-is - if they're wrapper events, they're already signed.
+	// If they're final events, the signature was cleared during padding and they'll need to be signed externally.
+	
 	// Note: The wrapper event (outer event) was already checked for replay attacks in ProcessEvent
 	// ProcessEvent ensures we don't process the same wrapper event twice, so HandleEvent
 	// will only be called once per wrapper event. We don't need additional replay checks here.
