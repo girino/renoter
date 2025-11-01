@@ -88,10 +88,11 @@ func TestRenoter_ProcessEvent(t *testing.T) {
 	validEvent.Sign(validEvent.PubKey)
 
 	// Create an old event (more than 1 hour)
+	oldTime := time.Now().Add(-2 * time.Hour)
 	oldEvent := &nostr.Event{
 		Kind:      29000,
 		Content:   "test",
-		CreatedAt: uint64(time.Now().Add(-2 * time.Hour).Unix()),
+		CreatedAt: nostr.Timestamp(oldTime.Unix()),
 		PubKey:    nostr.GeneratePrivateKey(),
 	}
 	oldEvent.Sign(oldEvent.PubKey)
