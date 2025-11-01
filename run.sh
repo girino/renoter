@@ -25,12 +25,17 @@ NC='\033[0m' # No Color
 if [ ! -f .env ]; then
     echo -e "${RED}Error: .env file not found${NC}"
     echo ""
-    echo "Please create a .env file with the following variables:"
-    echo "  RENOTER_RELAYS=wss://relay1.com,wss://relay2.com"
-    echo "  RENOTER_PATH=npub1...,npub2..."
-    echo "  CLIENT_SERVER_RELAYS=wss://relay1.com,wss://relay2.com"
-    echo "  CLIENT_LISTEN=:8080"
-    echo "  VERBOSE="
+    if [ -f example.env ]; then
+        echo "Copy example.env to .env and edit it:"
+        echo "  cp example.env .env"
+    else
+        echo "Please create a .env file with the following variables:"
+        echo "  RENOTER_RELAYS=wss://relay1.com,wss://relay2.com"
+        echo "  RENOTER_PATH=npub1...,npub2..."
+        echo "  CLIENT_SERVER_RELAYS=wss://relay1.com,wss://relay2.com"
+        echo "  CLIENT_LISTEN=:8080"
+        echo "  VERBOSE="
+    fi
     exit 1
 fi
 

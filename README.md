@@ -31,7 +31,7 @@ For easier testing, use the `run.sh` script to start both client and server from
 
 1. Copy the example environment file:
 ```bash
-cp .env.example .env
+cp example.env .env
 ```
 
 2. Edit `.env` and set your configuration:
