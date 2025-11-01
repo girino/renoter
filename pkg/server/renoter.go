@@ -19,10 +19,10 @@ type Renoter struct {
 	// Public key derived from private key
 	PublicKey string
 
-	// Event store for replay detection (in-memory map of event IDs)
+	// Event store for replay detection (in-memory map of event IDs to timestamps)
 	// Kept small (max 5K entries) to fit in memory
-	eventStore   map[string]bool
-	eventKeys    []string // Track insertion order for pruning
+	eventStore   map[string]time.Time // Map event ID to when it was first seen
+	eventKeys    []string             // Track insertion order for pruning
 	eventMu      sync.RWMutex
 	maxCacheSize int
 
@@ -70,7 +70,7 @@ func NewRenoter(ctx context.Context, privateKey string, relayURLs []string) (*Re
 	return &Renoter{
 		PrivateKey:   privateKey,
 		PublicKey:    pubkey,
-		eventStore:   make(map[string]bool),
+		eventStore:   make(map[string]time.Time),
 		eventKeys:    make([]string, 0, 5100), // Pre-allocate slightly more than max to reduce reallocations
 		pool:         pool,
 		relayURLs:    relayURLs,
