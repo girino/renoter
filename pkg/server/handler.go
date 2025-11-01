@@ -11,20 +11,8 @@ import (
 )
 
 // HandleEvent handles a wrapped event by decrypting it and forwarding the inner event.
-// IMPORTANT: This function assumes ProcessEvent has already been called and succeeded.
-// It does NOT check if the wrapper event was already processed - that's ProcessEvent's job.
 func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
-	logging.DebugMethod("server.handler", "HandleEvent", "HandleEvent called for wrapper event: ID=%s", event.ID)
-	
-	// DEFENSE: Check if this wrapper event was already handled (in case HandleEvent is called multiple times)
-	// This should not happen if ProcessEvent is working correctly, but add protection anyway
-	r.eventMu.RLock()
-	wrapperHandled := r.eventStore[event.ID+"_handled"]
-	r.eventMu.RUnlock()
-	if wrapperHandled {
-		logging.Warn("server.handler.HandleEvent: Wrapper event %s already handled, skipping duplicate HandleEvent call", event.ID)
-		return fmt.Errorf("wrapper event %s already handled", event.ID)
-	}
+	logging.Info("server.handler.HandleEvent: HandleEvent called for wrapper event: ID=%s", event.ID)
 
 	// Verify signature (already done in ProcessEvent, but double-check)
 	valid, err := event.CheckSignature()
@@ -74,40 +62,13 @@ func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
 		innerEvent.ID = innerEvent.GetID()
 		logging.DebugMethod("server.handler", "HandleEvent", "Computed inner event ID: %s", innerEvent.ID)
 	}
-	logging.DebugMethod("server.handler", "HandleEvent", "Deserialized inner event: ID=%s, Kind=%d", innerEvent.ID, innerEvent.Kind)
-
-	// Check if inner event was already published (replay protection for inner events)
-	// This must happen IMMEDIATELY after decryption, before any other processing
-	// CRITICAL: This prevents the same inner event from being published multiple times
-	// even if HandleEvent is somehow called multiple times for the same wrapper event
-	r.eventMu.Lock()
-	if r.eventStore[innerEvent.ID] {
-		r.eventMu.Unlock()
-		logging.Warn("server.handler.HandleEvent: Inner event %s already published, skipping duplicate", innerEvent.ID)
-		return fmt.Errorf("inner event %s already published", innerEvent.ID)
-	}
-	// Mark inner event as published BEFORE any other operations to prevent race conditions
-	r.eventStore[innerEvent.ID] = true
-	// Also mark wrapper as handled to prevent HandleEvent from being called twice for same wrapper
-	r.eventStore[event.ID+"_handled"] = true
-	r.eventMu.Unlock()
-	logging.DebugMethod("server.handler", "HandleEvent", "Atomically checked and marked inner event %s as published, wrapper %s as handled", innerEvent.ID, event.ID)
+	logging.Info("server.handler.HandleEvent: Deserialized inner event: ID=%s, Kind=%d", innerEvent.ID, innerEvent.Kind)
 
 	// Check if this is a final event or another wrapper
 	if innerEvent.Kind == 29000 {
 		logging.DebugMethod("server.handler", "HandleEvent", "Inner event is another wrapper (kind 29000), forwarding to next Renoter")
 	} else {
 		logging.Info("server.handler.HandleEvent: Inner event is final event (kind %d), will forward to network", innerEvent.Kind)
-	}
-
-	// Double-check that inner event hasn't been published (defense in depth)
-	// This extra check catches any race condition edge cases
-	r.eventMu.RLock()
-	alreadyPublished := r.eventStore[innerEvent.ID]
-	r.eventMu.RUnlock()
-	if alreadyPublished {
-		logging.Warn("server.handler.HandleEvent: Inner event %s already in store before publishing (race condition?), skipping", innerEvent.ID)
-		return fmt.Errorf("inner event %s already published", innerEvent.ID)
 	}
 
 	// Publish inner event to all relays using SimplePool
@@ -176,29 +137,17 @@ func (r *Renoter) SubscribeToWrappedEvents(ctx context.Context) error {
 				ev := relayEvent.Event
 				logging.DebugMethod("server.handler", "SubscribeToWrappedEvents", "Received wrapper event: ID=%s from relay %s", ev.ID, relayEvent.Relay.URL)
 
-				// Process the event (this includes replay detection)
+				// Process the event (verify signature)
 				err := r.ProcessEvent(ctx, ev)
 				if err != nil {
-					// Log error but continue processing (replay attacks are expected and logged as warnings)
-					if fmt.Sprintf("%v", err) == fmt.Sprintf("event %s already processed (replay attack)", ev.ID) {
-						logging.DebugMethod("server.handler", "SubscribeToWrappedEvents", "Event %s already processed (duplicate from relay), skipping", ev.ID)
-					} else {
-						logging.Warn("server.handler.SubscribeToWrappedEvents: Error processing event %s: %v", ev.ID, err)
-					}
+					logging.Warn("server.handler.SubscribeToWrappedEvents: Error processing event %s: %v", ev.ID, err)
 					continue
 				}
 
 				// Handle (decrypt and forward)
-				// ProcessEvent already marked this wrapper event, so HandleEvent can safely decrypt and publish inner event
 				err = r.HandleEvent(ctx, ev)
 				if err != nil {
-					// If inner event was already published, that's expected (duplicate detected)
-					errStr := fmt.Sprintf("%v", err)
-					if errStr != "" && len(errStr) > 19 && errStr[len(errStr)-19:] == " already published" {
-						logging.DebugMethod("server.handler", "SubscribeToWrappedEvents", "Inner event already published, skipping duplicate: %v", err)
-					} else {
-						logging.Warn("server.handler.SubscribeToWrappedEvents: Error handling event %s: %v", ev.ID, err)
-					}
+					logging.Warn("server.handler.SubscribeToWrappedEvents: Error handling event %s: %v", ev.ID, err)
 					continue
 				}
 
