@@ -11,8 +11,20 @@ import (
 )
 
 // HandleEvent handles a wrapped event by decrypting it and forwarding the inner event.
+// IMPORTANT: This function assumes ProcessEvent has already been called and succeeded.
+// It does NOT check if the wrapper event was already processed - that's ProcessEvent's job.
 func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
-	logging.DebugMethod("server.handler", "HandleEvent", "Handling wrapped event: ID=%s", event.ID)
+	logging.DebugMethod("server.handler", "HandleEvent", "HandleEvent called for wrapper event: ID=%s", event.ID)
+	
+	// DEFENSE: Check if this wrapper event was already handled (in case HandleEvent is called multiple times)
+	// This should not happen if ProcessEvent is working correctly, but add protection anyway
+	r.eventMu.RLock()
+	wrapperHandled := r.eventStore[event.ID+"_handled"]
+	r.eventMu.RUnlock()
+	if wrapperHandled {
+		logging.Warn("server.handler.HandleEvent: Wrapper event %s already handled, skipping duplicate HandleEvent call", event.ID)
+		return fmt.Errorf("wrapper event %s already handled", event.ID)
+	}
 
 	// Verify signature (already done in ProcessEvent, but double-check)
 	valid, err := event.CheckSignature()
@@ -76,8 +88,10 @@ func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
 	}
 	// Mark inner event as published BEFORE any other operations to prevent race conditions
 	r.eventStore[innerEvent.ID] = true
+	// Also mark wrapper as handled to prevent HandleEvent from being called twice for same wrapper
+	r.eventStore[event.ID+"_handled"] = true
 	r.eventMu.Unlock()
-	logging.DebugMethod("server.handler", "HandleEvent", "Atomically checked and marked inner event %s as published", innerEvent.ID)
+	logging.DebugMethod("server.handler", "HandleEvent", "Atomically checked and marked inner event %s as published, wrapper %s as handled", innerEvent.ID, event.ID)
 
 	// Check if this is a final event or another wrapper
 	if innerEvent.Kind == 29000 {
