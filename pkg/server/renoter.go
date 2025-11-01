@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+
 	"github.com/girino/nostr-lib/logging"
 	"github.com/nbd-wtf/go-nostr"
 )
@@ -22,8 +23,8 @@ type Renoter struct {
 	eventMu    sync.RWMutex
 
 	// SimplePool for managing multiple relay connections (used for both listening and forwarding)
-	pool        *nostr.SimplePool
-	relayURLs   []string
+	pool      *nostr.SimplePool
+	relayURLs []string
 }
 
 // NewRenoter creates a new Renoter instance with a SimplePool for multiple relay connections.
@@ -86,17 +87,16 @@ func (r *Renoter) GetRelayURLs() []string {
 func (r *Renoter) ProcessEvent(ctx context.Context, event *nostr.Event) error {
 	logging.DebugMethod("server.renoter", "ProcessEvent", "Processing wrapped event: ID=%s, Kind=%d, PubKey=%s", event.ID, event.Kind, event.PubKey[:16])
 
-	// Check for replay attacks
-	r.eventMu.RLock()
-	if r.eventStore[event.ID] {
-		r.eventMu.RUnlock()
+	// Check for replay attacks and mark event atomically to prevent race conditions
+	// This prevents the same event from being processed multiple times when received from multiple relays
+	r.eventMu.Lock()
+	alreadyProcessed := r.eventStore[event.ID]
+	if alreadyProcessed {
+		r.eventMu.Unlock()
 		logging.Warn("server.renoter.ProcessEvent: Replay attack detected, event %s already processed", event.ID)
 		return fmt.Errorf("event %s already processed (replay attack)", event.ID)
 	}
-	r.eventMu.RUnlock()
-
-	// Mark event as seen
-	r.eventMu.Lock()
+	// Mark event as seen immediately (before signature check) to prevent concurrent processing
 	r.eventStore[event.ID] = true
 	r.eventMu.Unlock()
 	logging.DebugMethod("server.renoter", "ProcessEvent", "Marked event %s as seen in event store", event.ID)
@@ -106,10 +106,12 @@ func (r *Renoter) ProcessEvent(ctx context.Context, event *nostr.Event) error {
 	valid, err := event.CheckSignature()
 	if err != nil {
 		logging.Error("server.renoter.ProcessEvent: signature check failed for event %s: %v", event.ID, err)
+		// Don't remove from event store - keep it marked to prevent retries
 		return fmt.Errorf("signature check failed: %w", err)
 	}
 	if !valid {
 		logging.Error("server.renoter.ProcessEvent: invalid signature for event %s", event.ID)
+		// Don't remove from event store - keep it marked to prevent retries
 		return fmt.Errorf("invalid signature for event %s", event.ID)
 	}
 	logging.DebugMethod("server.renoter", "ProcessEvent", "Signature verified successfully for event %s", event.ID)
@@ -122,4 +124,3 @@ func (r *Renoter) ProcessEvent(ctx context.Context, event *nostr.Event) error {
 func (r *Renoter) GetPublicKey() string {
 	return r.PublicKey
 }
-
