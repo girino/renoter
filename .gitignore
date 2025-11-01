@@ -3,6 +3,11 @@ renoter-client
 renoter-server
 client
 server
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
 *.log
 
 # Environment files
