@@ -140,7 +140,7 @@ func (r *Renoter) SubscribeToWrappedEvents(ctx context.Context) error {
 				}
 
 				ev := relayEvent.Event
-				logging.Info("server.handler.SubscribeToWrappedEvents: Received wrapper event: ID=%s from relay %s", ev.ID, relayEvent.Relay.URL)
+				logging.Info("server.handler.SubscribeToWrappedEvents: [EVENT RECEIVED] Received wrapper event: ID=%s, PubKey=%s, Kind=%d from relay %s", ev.ID, ev.PubKey[:16], ev.Kind, relayEvent.Relay.URL)
 
 				// Deduplicate: skip if we already processed this event
 				if processedEvents[ev.ID] {
