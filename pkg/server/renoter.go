@@ -61,8 +61,6 @@ func NewRenoter(ctx context.Context, privateKey string, relayURLs []string) (*Re
 		}
 	}
 
-	logging.Info("server.renoter.NewRenoter: Created Renoter instance, pubkey: %s (first 16 chars), %d relays", pubkey[:16], len(relayURLs))
-
 	return &Renoter{
 		PrivateKey: privateKey,
 		PublicKey:  pubkey,
@@ -79,15 +77,12 @@ func (r *Renoter) GetPool() *nostr.SimplePool {
 
 // GetRelayURLs returns the list of relay URLs used by this Renoter.
 func (r *Renoter) GetRelayURLs() []string {
-	logging.Info("server.renoter.GetRelayURLs: Returning %d relay URLs: %v", len(r.relayURLs), r.relayURLs)
 	return r.relayURLs
 }
 
 // ProcessEvent processes a wrapped event by verifying signature,
 // decrypting one layer, and forwarding the inner event.
 func (r *Renoter) ProcessEvent(ctx context.Context, event *nostr.Event) error {
-	logging.Info("server.renoter.ProcessEvent: Processing wrapped event: ID=%s, Kind=%d, PubKey=%s", event.ID, event.Kind, event.PubKey[:16])
-
 	// Check for replay attacks - mark event as seen atomically to prevent race conditions
 	r.eventMu.Lock()
 	if r.eventStore[event.ID] {

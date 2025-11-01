@@ -12,8 +12,6 @@ import (
 
 // HandleEvent handles a wrapped event by decrypting it and forwarding the inner event.
 func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
-	logging.Info("server.handler.HandleEvent: [HANDLEEVENT CALLED] HandleEvent called for wrapper event: ID=%s", event.ID)
-
 	// Verify signature (already done in ProcessEvent, but double-check)
 	valid, err := event.CheckSignature()
 	if err != nil {
@@ -62,7 +60,6 @@ func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
 		innerEvent.ID = innerEvent.GetID()
 		logging.DebugMethod("server.handler", "HandleEvent", "Computed inner event ID: %s", innerEvent.ID)
 	}
-	logging.Info("server.handler.HandleEvent: Deserialized inner event: ID=%s, Kind=%d", innerEvent.ID, innerEvent.Kind)
 
 	// Note: The wrapper event (outer event) was already checked for replay attacks in ProcessEvent
 	// ProcessEvent ensures we don't process the same wrapper event twice, so HandleEvent
@@ -71,17 +68,12 @@ func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
 	// Check if this is a final event or another wrapper
 	if innerEvent.Kind == 29000 {
 		logging.DebugMethod("server.handler", "HandleEvent", "Inner event is another wrapper (kind 29000), forwarding to next Renoter")
-	} else {
-		logging.Info("server.handler.HandleEvent: Inner event is final event (kind %d), will forward to network", innerEvent.Kind)
 	}
 
 	// Publish inner event to all relays using SimplePool
 	// IMPORTANT: This should only be called once per inner event
 	relayURLs := r.GetRelayURLs()
-	logging.Info("server.handler.HandleEvent: [SERVER PUBLISH START] About to publish inner event %s (kind %d) to %d relays via PublishMany for wrapper %s", innerEvent.ID, innerEvent.Kind, len(relayURLs), event.ID)
-	logging.Info("server.handler.HandleEvent: [RELAY URLS] GetRelayURLs() returned: %v", relayURLs)
 	publishResults := r.GetPool().PublishMany(ctx, relayURLs, innerEvent)
-	logging.Info("server.handler.HandleEvent: [SERVER PUBLISH CALLED] PublishMany called for inner event %s (from wrapper %s)", innerEvent.ID, event.ID)
 	logging.DebugMethod("server.handler", "HandleEvent", "PublishMany started for inner event %s, collecting results...", innerEvent.ID)
 
 	// Collect results
@@ -102,14 +94,12 @@ func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
 		return fmt.Errorf("failed to publish inner event %s to any relay", innerEvent.ID)
 	}
 
-	logging.Info("server.handler.HandleEvent: Successfully processed and forwarded wrapper %s -> inner event %s (kind %d) to %d/%d relays", event.ID, innerEvent.ID, innerEvent.Kind, successCount, len(relayURLs))
 	return nil
 }
 
 // SubscribeToWrappedEvents subscribes to wrapper events (kind 29000) on multiple relays.
 func (r *Renoter) SubscribeToWrappedEvents(ctx context.Context) error {
 	relayURLs := r.GetRelayURLs()
-	logging.Info("server.handler.SubscribeToWrappedEvents: Subscribing to %d relays: %v", len(relayURLs), relayURLs)
 
 	// Create filter for wrapper events addressed to this Renoter
 	// Filter by events with kind 29000 that have our pubkey in a "p" tag
@@ -124,7 +114,6 @@ func (r *Renoter) SubscribeToWrappedEvents(ctx context.Context) error {
 
 	// Subscribe to all relays using SimplePool
 	events := r.GetPool().SubscribeMany(ctx, relayURLs, filter)
-	logging.Info("server.handler.SubscribeToWrappedEvents: Successfully subscribed to wrapper events (kind 29000) with our pubkey in 'p' tag on %d relays", len(relayURLs))
 
 	// Handle incoming events from all relays
 	// Track processed events to avoid processing the same event multiple times from different relays
@@ -132,37 +121,29 @@ func (r *Renoter) SubscribeToWrappedEvents(ctx context.Context) error {
 	processedEvents := make(map[string]bool)
 	processingEvents := make(map[string]bool)
 	go func() {
-		logging.Info("server.handler.SubscribeToWrappedEvents: Started event processing goroutine")
 		for {
 			select {
 			case <-ctx.Done():
-				logging.Info("server.handler.SubscribeToWrappedEvents: Context cancelled, stopping event processing")
 				return
 			case relayEvent, ok := <-events:
 				if !ok {
-					logging.Info("server.handler.SubscribeToWrappedEvents: Event channel closed, stopping")
 					return
 				}
 
 				ev := relayEvent.Event
-				logging.Info("server.handler.SubscribeToWrappedEvents: [EVENT RECEIVED] Received wrapper event: ID=%s, PubKey=%s, Kind=%d from relay %s", ev.ID, ev.PubKey[:16], ev.Kind, relayEvent.Relay.URL)
 
 				// Deduplicate: skip if we already processed this event
 				if processedEvents[ev.ID] {
-					logging.Info("server.handler.SubscribeToWrappedEvents: [DUPLICATE DETECTED] Event %s already processed (received from relay %s, but previously processed), skipping", ev.ID, relayEvent.Relay.URL)
 					continue
 				}
 				// Check if currently being processed (defense against race conditions)
 				if processingEvents[ev.ID] {
-					logging.Info("server.handler.SubscribeToWrappedEvents: [ALREADY PROCESSING] Event %s already being processed (received from relay %s), skipping", ev.ID, relayEvent.Relay.URL)
 					continue
 				}
 				// Mark as being processed immediately
 				processingEvents[ev.ID] = true
-				logging.Info("server.handler.SubscribeToWrappedEvents: [FIRST TIME] Marked event %s as processing (received from relay %s)", ev.ID, relayEvent.Relay.URL)
 
 				// Process the event (verify signature)
-				logging.Info("server.handler.SubscribeToWrappedEvents: About to ProcessEvent for event %s from relay %s", ev.ID, relayEvent.Relay.URL)
 				err := r.ProcessEvent(ctx, ev)
 				if err != nil {
 					logging.Warn("server.handler.SubscribeToWrappedEvents: Error processing event %s: %v", ev.ID, err)
@@ -170,20 +151,16 @@ func (r *Renoter) SubscribeToWrappedEvents(ctx context.Context) error {
 				}
 
 				// Handle (decrypt and forward)
-				logging.Info("server.handler.SubscribeToWrappedEvents: [CALLING HANDLEEVENT] About to call HandleEvent for event %s from relay %s", ev.ID, relayEvent.Relay.URL)
 				err = r.HandleEvent(ctx, ev)
-				logging.Info("server.handler.SubscribeToWrappedEvents: [HANDLEEVENT RETURNED] HandleEvent returned for event %s with error=%v", ev.ID, err != nil)
 
 				// Mark as processed (regardless of success/failure)
 				processedEvents[ev.ID] = true
 				delete(processingEvents, ev.ID)
 
 				if err != nil {
-					logging.Warn("server.handler.SubscribeToWrappedEvents: [HANDLEEVENT ERROR] Error handling event %s: %v", ev.ID, err)
+					logging.Warn("server.handler.SubscribeToWrappedEvents: Error handling event %s: %v", ev.ID, err)
 					continue
 				}
-
-				logging.Info("server.handler.SubscribeToWrappedEvents: [HANDLEEVENT SUCCESS] Successfully processed and forwarded event %s from relay %s", ev.ID, relayEvent.Relay.URL)
 			}
 		}
 	}()
