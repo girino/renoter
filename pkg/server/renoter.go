@@ -65,7 +65,7 @@ func NewRenoter(ctx context.Context, privateKey string, relayURLs []string) (*Re
 	return &Renoter{
 		PrivateKey: privateKey,
 		PublicKey:  pubkey,
-		eventCache: NewEventCache(5000), // Max 5K entries
+		eventCache: NewEventCache(5000, 2*time.Hour), // Max 5K entries, 2 hour cutoff
 		pool:       pool,
 		relayURLs:  relayURLs,
 	}, nil
