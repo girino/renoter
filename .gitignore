@@ -1,8 +1,8 @@
-# Binaries
-renoter-client
-renoter-server
-client
-server
+# Binaries (root level only)
+/renoter-client
+/renoter-server
+/client
+/server
 *.exe
 *.exe~
 *.dll
