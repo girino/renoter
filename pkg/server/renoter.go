@@ -73,6 +73,7 @@ func (r *Renoter) GetPool() *nostr.SimplePool {
 
 // GetRelayURLs returns the list of relay URLs used by this Renoter.
 func (r *Renoter) GetRelayURLs() []string {
+	logging.Info("server.renoter.GetRelayURLs: Returning %d relay URLs: %v", len(r.relayURLs), r.relayURLs)
 	return r.relayURLs
 }
 
