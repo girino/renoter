@@ -55,36 +55,20 @@ func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
 		return fmt.Errorf("failed to deserialize inner event: %w", err)
 	}
 
-	// Validate and recalculate the event ID after deserialization if needed
-	// The ID in the JSON might have been computed before padding was applied,
-	// so we need to ensure it matches the current event structure (which includes padding tags)
-	oldID := innerEvent.ID
-	newID := innerEvent.GetID()
-	
-	// Check if the old ID is valid for the current event structure
-	if oldID != "" && oldID == newID {
-		// ID matches current structure, verify it with CheckID
-		if innerEvent.CheckID() {
-			logging.DebugMethod("server.handler", "HandleEvent", "Inner event ID verified: %s", innerEvent.ID)
-		} else {
-			// ID doesn't match computed ID, recalculate
-			innerEvent.ID = newID
-			logging.DebugMethod("server.handler", "HandleEvent", "Recalculated inner event ID: %s -> %s (CheckID failed)", oldID, innerEvent.ID)
+	// Validate the inner event ID (should already be correct since client recalculates after padding)
+	if !innerEvent.CheckID() {
+		// ID doesn't match, recalculate it
+		oldID := innerEvent.ID
+		innerEvent.ID = innerEvent.GetID()
+		logging.DebugMethod("server.handler", "HandleEvent", "Recalculated inner event ID: %s -> %s (CheckID failed)", oldID, innerEvent.ID)
+
+		// Validate again after recalculation
+		if !innerEvent.CheckID() {
+			logging.Error("server.handler.HandleEvent: inner event ID %s failed CheckID validation after recalculation", innerEvent.ID)
+			return fmt.Errorf("invalid inner event ID")
 		}
 	} else {
-		// Old ID doesn't match current structure or is missing, use recalculated one
-		innerEvent.ID = newID
-		if oldID != "" {
-			logging.DebugMethod("server.handler", "HandleEvent", "Recalculated inner event ID: %s -> %s (ID was computed for different structure)", oldID, innerEvent.ID)
-		} else {
-			logging.DebugMethod("server.handler", "HandleEvent", "Computed inner event ID: %s", innerEvent.ID)
-		}
-	}
-	
-	// Final validation: ensure the ID is correct for the current event
-	if !innerEvent.CheckID() {
-		logging.Error("server.handler.HandleEvent: recalculated inner event ID %s failed CheckID validation", innerEvent.ID)
-		return fmt.Errorf("invalid inner event ID after recalculation")
+		logging.DebugMethod("server.handler", "HandleEvent", "Inner event ID verified: %s", innerEvent.ID)
 	}
 
 	// Note: The wrapper event (outer event) was already checked for replay attacks in ProcessEvent

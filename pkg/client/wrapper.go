@@ -126,7 +126,22 @@ func WrapEvent(originalEvent *nostr.Event, renterPath [][]byte) (*nostr.Event, e
 		}
 		logging.DebugMethod("client.wrapper", "WrapEvent", "Inner event padded to multiple of 64 bytes (layer %d)", i)
 
-		// Serialize padded event to JSON
+		// Recalculate the event ID after padding to ensure it matches the padded structure
+		// The ID might have been computed before padding was applied
+		oldID := paddedEvent.ID
+		newID := paddedEvent.GetID()
+		if oldID != newID {
+			paddedEvent.ID = newID
+			logging.DebugMethod("client.wrapper", "WrapEvent", "Recalculated inner event ID after padding: %s -> %s (layer %d)", oldID, newID, i)
+		}
+		
+		// Validate the ID is correct for the padded event
+		if !paddedEvent.CheckID() {
+			logging.Error("client.wrapper.WrapEvent: padded inner event ID %s failed CheckID validation (layer %d)", paddedEvent.ID, i)
+			return nil, fmt.Errorf("invalid inner event ID after padding at layer %d", i)
+		}
+
+		// Serialize padded event to JSON (with correct ID)
 		logging.DebugMethod("client.wrapper", "WrapEvent", "Serializing padded event to JSON (layer %d)", i)
 		eventJSON, err := json.Marshal(paddedEvent)
 		if err != nil {
