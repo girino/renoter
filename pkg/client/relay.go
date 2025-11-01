@@ -31,9 +31,13 @@ func SetupRelay(relay *khatru.Relay, renterPath [][]byte, serverRelayURLs []stri
 
 	// Helper function to process and wrap events
 	processEvent := func(ctx context.Context, event *nostr.Event) {
+		// Shuffle the Renoter path for each event to randomize routing
+		// This improves privacy by ensuring events don't always follow the same path
+		shuffledPath := ShufflePath(renterPath)
+		logging.DebugMethod("client.relay", "processEvent", "Using shuffled Renoter path for event %s", event.ID)
 
-		// Wrap the event for the Renoter path
-		wrappedEvent, err := WrapEvent(event, renterPath)
+		// Wrap the event for the shuffled Renoter path
+		wrappedEvent, err := WrapEvent(event, shuffledPath)
 		if err != nil {
 			logging.Error("client.relay.processEvent: failed to wrap event %s: %v", event.ID, err)
 			return

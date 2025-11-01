@@ -3,6 +3,9 @@ package client
 import (
 	"encoding/hex"
 	"fmt"
+	"math/rand"
+	"time"
+
 	"github.com/girino/nostr-lib/logging"
 	"github.com/nbd-wtf/go-nostr/nip19"
 )
@@ -67,4 +70,27 @@ func ValidatePath(npubs []string) ([][]byte, error) {
 
 	logging.Info("client.path.ValidatePath: Successfully validated all %d npubs in Renoter path", len(npubs))
 	return publicKeys, nil
+}
+
+// ShufflePath randomly shuffles the Renoter path to randomize routing order.
+// This improves privacy by ensuring events don't always follow the same path.
+// Returns a new slice with shuffled order (original slice is not modified).
+func ShufflePath(path [][]byte) [][]byte {
+	if len(path) <= 1 {
+		// No need to shuffle if path has 0 or 1 Renoters
+		return path
+	}
+
+	// Create a copy to avoid modifying the original
+	shuffled := make([][]byte, len(path))
+	copy(shuffled, path)
+
+	// Use current time as seed for randomness
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	rng.Shuffle(len(shuffled), func(i, j int) {
+		shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
+	})
+
+	logging.DebugMethod("client.path", "ShufflePath", "Shuffled Renoter path with %d nodes", len(shuffled))
+	return shuffled
 }
