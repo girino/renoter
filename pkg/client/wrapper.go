@@ -134,7 +134,7 @@ func WrapEvent(originalEvent *nostr.Event, renterPath [][]byte) (*nostr.Event, e
 			paddedEvent.ID = newID
 			logging.DebugMethod("client.wrapper", "WrapEvent", "Recalculated inner event ID after padding: %s -> %s (layer %d)", oldID, newID, i)
 		}
-		
+
 		// Validate the ID is correct for the padded event
 		if !paddedEvent.CheckID() {
 			logging.Error("client.wrapper.WrapEvent: padded inner event ID %s failed CheckID validation (layer %d)", paddedEvent.ID, i)

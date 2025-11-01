@@ -55,22 +55,6 @@ func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
 		return fmt.Errorf("failed to deserialize inner event: %w", err)
 	}
 
-	// Validate the inner event ID (should already be correct since client recalculates after padding)
-	if !innerEvent.CheckID() {
-		// ID doesn't match, recalculate it
-		oldID := innerEvent.ID
-		innerEvent.ID = innerEvent.GetID()
-		logging.DebugMethod("server.handler", "HandleEvent", "Recalculated inner event ID: %s -> %s (CheckID failed)", oldID, innerEvent.ID)
-
-		// Validate again after recalculation
-		if !innerEvent.CheckID() {
-			logging.Error("server.handler.HandleEvent: inner event ID %s failed CheckID validation after recalculation", innerEvent.ID)
-			return fmt.Errorf("invalid inner event ID")
-		}
-	} else {
-		logging.DebugMethod("server.handler", "HandleEvent", "Inner event ID verified: %s", innerEvent.ID)
-	}
-
 	// Note: The wrapper event (outer event) was already checked for replay attacks in ProcessEvent
 	// ProcessEvent ensures we don't process the same wrapper event twice, so HandleEvent
 	// will only be called once per wrapper event. We don't need additional replay checks here.
