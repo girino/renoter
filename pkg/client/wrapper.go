@@ -15,7 +15,7 @@ import (
 
 // padEventToPowerOfTwo adds padding tags to an event to make its serialized size a power of 2.
 // Returns a new event with padding tags added, or the original event if already a power of 2.
-// Uses iterative approach: keeps adding ["padding", "randomstring"] tags until size is power of 2.
+// Accounts for ID, signature, and padding tag overhead before calculating target size.
 func padEventToPowerOfTwo(event *nostr.Event) (*nostr.Event, error) {
 	// Create a copy to avoid modifying the original
 	paddedEvent := *event
@@ -23,41 +23,90 @@ func padEventToPowerOfTwo(event *nostr.Event) (*nostr.Event, error) {
 		paddedEvent.Tags = nostr.Tags{}
 	}
 
-	// Iteratively add padding tags until we reach a power of 2
-	maxIterations := 100 // Safety limit to prevent infinite loops
-	for i := 0; i < maxIterations; i++ {
-		// Serialize event to get current size
-		eventJSON, err := json.Marshal(&paddedEvent)
-		if err != nil {
-			return nil, fmt.Errorf("failed to serialize event for padding: %w", err)
-		}
-		currentSize := len(eventJSON)
+	// Serialize event to get current size (without padding)
+	eventJSON, err := json.Marshal(&paddedEvent)
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize event for padding: %w", err)
+	}
+	currentSize := len(eventJSON)
 
-		// Check if current size is a power of 2
-		if isPowerOfTwo(currentSize) {
-			if i > 0 {
-				logging.DebugMethod("client.wrapper", "padEventToPowerOfTwo", "Event padded to power of 2: %d bytes (added %d padding tags)", currentSize, i)
-			} else {
-				logging.DebugMethod("client.wrapper", "padEventToPowerOfTwo", "Event already at power of 2 size: %d bytes", currentSize)
-			}
-			return &paddedEvent, nil
-		}
+	// Calculate additional sizes that will be added if not present:
+	// - ID: 64 hex chars = 64 bytes in JSON string field (with quotes)
+	// - Signature: 128 hex chars = 128 bytes in JSON string field (with quotes)
+	// - Padding tag base: ["padding",""] = ~18 bytes
+	// In JSON: "id":"64hexchars" = 2 + 64 + 2 = 68 bytes, but we'll be more precise
+	// Let's estimate: "id":"..." with quotes and comma = ~70 bytes
+	// "sig":"..." = ~134 bytes
+	// ["padding",""] = ~18 bytes
 
-		// Generate random padding string
-		// Use hex encoding - each byte becomes 2 hex chars, so we get predictable size growth
-		// Start with small padding and increment
-		paddingBytes := make([]byte, 8) // 8 bytes = 16 hex chars
+	idSize := 0
+	if paddedEvent.ID == "" {
+		// ID is 64 hex chars, JSON encoded as "id":"64chars" = 70 bytes
+		idSize = 70
+	}
+
+	sigSize := 0
+	if paddedEvent.Sig == "" {
+		// Signature is 128 hex chars, JSON encoded as "sig":"128chars" = 134 bytes
+		sigSize = 134
+	}
+
+	// Padding tag base size: ["padding",""] = ~18 bytes in JSON
+	tagBaseSize := 18
+
+	// Calculate total size including missing fields and padding tag
+	totalSize := currentSize + idSize + sigSize + tagBaseSize
+
+	// Find next power of 2 for the total size
+	nextPowerOf2 := nextPowerOfTwo(totalSize)
+
+	// Calculate exact padding needed
+	paddingNeeded := nextPowerOf2 - totalSize
+
+	// If no padding needed (already power of 2), return as-is
+	if paddingNeeded == 0 {
+		logging.DebugMethod("client.wrapper", "padEventToPowerOfTwo", "Event already at power of 2 size: %d bytes", currentSize)
+		return &paddedEvent, nil
+	}
+
+	// Generate padding string of exactly the needed length
+	// Each byte of random data becomes 2 hex chars, so we need paddingNeeded/2 bytes
+	// But we need exactly paddingNeeded chars, so generate enough and truncate
+	paddingBytes := make([]byte, (paddingNeeded+1)/2) // Round up
+	if len(paddingBytes) > 0 {
 		if _, err := rand.Read(paddingBytes); err != nil {
 			return nil, fmt.Errorf("failed to generate random padding: %w", err)
 		}
-		paddingString := hex.EncodeToString(paddingBytes)
+	}
+	paddingString := hex.EncodeToString(paddingBytes)
 
-		// Add padding tag
-		paddedEvent.Tags = append(paddedEvent.Tags, nostr.Tag{"padding", paddingString})
+	// Truncate to exact length needed
+	if len(paddingString) > paddingNeeded {
+		paddingString = paddingString[:paddingNeeded]
 	}
 
-	// If we exit the loop, we hit max iterations
-	return nil, fmt.Errorf("failed to pad event to power of 2 after %d iterations", maxIterations)
+	// Add padding tag
+	paddedEvent.Tags = append(paddedEvent.Tags, nostr.Tag{"padding", paddingString})
+
+	logging.DebugMethod("client.wrapper", "padEventToPowerOfTwo", "Added padding: %d bytes needed, event size: %d -> target: %d", paddingNeeded, currentSize, nextPowerOf2)
+
+	return &paddedEvent, nil
+}
+
+// nextPowerOfTwo returns the smallest power of 2 that is >= n.
+func nextPowerOfTwo(n int) int {
+	if n <= 0 {
+		return 1
+	}
+	if isPowerOfTwo(n) {
+		return n
+	}
+	// Find next power of 2 using bit manipulation
+	power := 1
+	for power < n {
+		power <<= 1
+	}
+	return power
 }
 
 // isPowerOfTwo checks if a number is a power of 2.
