@@ -1,15 +1,17 @@
 #!/bin/bash
 
-# Script to run both Renoter client and server from .env configuration
+# Script to run 3 Renoter servers and 1 client from .env configuration
 # Usage: ./run.sh
 #
 # Required .env variables:
 #   RENOTER_RELAYS - Comma-separated relay URLs (e.g., wss://relay1.com,wss://relay2.com)
-#   RENOTER_PATH - Comma-separated Renoter npubs (e.g., npub1...,npub2...)
+#   RENOTER_PATH - Comma-separated Renoter npubs (e.g., npub1...,npub2...,npub3...)
 #   CLIENT_SERVER_RELAYS - Comma-separated relay URLs for client to send wrapped events
 #
 # Optional .env variables:
-#   RENOTER_PRIVATE_KEY - Private key in hex (leave empty to generate new)
+#   RENOTER_PRIVATE_KEY_1 - Private key for Renoter 1 in hex (leave empty to generate new)
+#   RENOTER_PRIVATE_KEY_2 - Private key for Renoter 2 in hex (leave empty to generate new)
+#   RENOTER_PRIVATE_KEY_3 - Private key for Renoter 3 in hex (leave empty to generate new)
 #   CLIENT_LISTEN - Client listen address (default: :8080)
 #   VERBOSE - Debug logging (true/all or module.method filters)
 
@@ -46,8 +48,14 @@ source .env
 set +a
 
 # Check required variables
-if [ -z "$RENOTER_PRIVATE_KEY" ]; then
-    echo -e "${YELLOW}Warning: RENOTER_PRIVATE_KEY not set, server will generate a new one${NC}"
+if [ -z "$RENOTER_PRIVATE_KEY_1" ]; then
+    echo -e "${YELLOW}Warning: RENOTER_PRIVATE_KEY_1 not set, Renoter 1 will generate a new key${NC}"
+fi
+if [ -z "$RENOTER_PRIVATE_KEY_2" ]; then
+    echo -e "${YELLOW}Warning: RENOTER_PRIVATE_KEY_2 not set, Renoter 2 will generate a new key${NC}"
+fi
+if [ -z "$RENOTER_PRIVATE_KEY_3" ]; then
+    echo -e "${YELLOW}Warning: RENOTER_PRIVATE_KEY_3 not set, Renoter 3 will generate a new key${NC}"
 fi
 
 if [ -z "$RENOTER_RELAYS" ]; then
@@ -76,18 +84,28 @@ if ! go build ./cmd/client ./cmd/server > /dev/null 2>&1; then
     exit 1
 fi
 
-# Cleanup function to kill both processes
+# Cleanup function to kill all processes
 cleanup() {
     echo -e "\n${YELLOW}Shutting down...${NC}"
-    if [ ! -z "$SERVER_PID" ]; then
-        echo "Killing server (PID: $SERVER_PID)"
-        kill $SERVER_PID 2>/dev/null || true
+    if [ ! -z "$SERVER_PID_1" ]; then
+        echo "Killing Renoter 1 (PID: $SERVER_PID_1)"
+        kill $SERVER_PID_1 2>/dev/null || true
+    fi
+    if [ ! -z "$SERVER_PID_2" ]; then
+        echo "Killing Renoter 2 (PID: $SERVER_PID_2)"
+        kill $SERVER_PID_2 2>/dev/null || true
+    fi
+    if [ ! -z "$SERVER_PID_3" ]; then
+        echo "Killing Renoter 3 (PID: $SERVER_PID_3)"
+        kill $SERVER_PID_3 2>/dev/null || true
     fi
     if [ ! -z "$CLIENT_PID" ]; then
         echo "Killing client (PID: $CLIENT_PID)"
         kill $CLIENT_PID 2>/dev/null || true
     fi
-    wait $SERVER_PID 2>/dev/null || true
+    wait $SERVER_PID_1 2>/dev/null || true
+    wait $SERVER_PID_2 2>/dev/null || true
+    wait $SERVER_PID_3 2>/dev/null || true
     wait $CLIENT_PID 2>/dev/null || true
     echo -e "${GREEN}Shutdown complete${NC}"
     exit 0
@@ -96,23 +114,56 @@ cleanup() {
 # Trap SIGINT and SIGTERM
 trap cleanup SIGINT SIGTERM
 
-# Start server using go run (always uses latest code)
-echo -e "${GREEN}Starting Renoter server (go run)...${NC}"
-if [ -z "$RENOTER_PRIVATE_KEY" ]; then
-    go run ./cmd/server -relays="$RENOTER_RELAYS" > server.log 2>&1 &
+# Start Renoter 1 using go run (always uses latest code)
+echo -e "${GREEN}Starting Renoter 1 (go run)...${NC}"
+if [ -z "$RENOTER_PRIVATE_KEY_1" ]; then
+    go run ./cmd/server -relays="$RENOTER_RELAYS" > server1.log 2>&1 &
 else
-    go run ./cmd/server -private-key="$RENOTER_PRIVATE_KEY" -relays="$RENOTER_RELAYS" > server.log 2>&1 &
+    go run ./cmd/server -private-key="$RENOTER_PRIVATE_KEY_1" -relays="$RENOTER_RELAYS" > server1.log 2>&1 &
 fi
-SERVER_PID=$!
-echo "Server PID: $SERVER_PID"
-echo "Server logs: server.log"
+SERVER_PID_1=$!
+echo "Renoter 1 PID: $SERVER_PID_1"
+echo "Renoter 1 logs: server1.log"
 
-# Wait a moment for server to start
-sleep 1
+# Start Renoter 2
+echo -e "${GREEN}Starting Renoter 2 (go run)...${NC}"
+if [ -z "$RENOTER_PRIVATE_KEY_2" ]; then
+    go run ./cmd/server -relays="$RENOTER_RELAYS" > server2.log 2>&1 &
+else
+    go run ./cmd/server -private-key="$RENOTER_PRIVATE_KEY_2" -relays="$RENOTER_RELAYS" > server2.log 2>&1 &
+fi
+SERVER_PID_2=$!
+echo "Renoter 2 PID: $SERVER_PID_2"
+echo "Renoter 2 logs: server2.log"
 
-# Check if server is still running
-if ! kill -0 $SERVER_PID 2>/dev/null; then
-    echo -e "${RED}Error: Server failed to start. Check server.log for details.${NC}"
+# Start Renoter 3
+echo -e "${GREEN}Starting Renoter 3 (go run)...${NC}"
+if [ -z "$RENOTER_PRIVATE_KEY_3" ]; then
+    go run ./cmd/server -relays="$RENOTER_RELAYS" > server3.log 2>&1 &
+else
+    go run ./cmd/server -private-key="$RENOTER_PRIVATE_KEY_3" -relays="$RENOTER_RELAYS" > server3.log 2>&1 &
+fi
+SERVER_PID_3=$!
+echo "Renoter 3 PID: $SERVER_PID_3"
+echo "Renoter 3 logs: server3.log"
+
+# Wait a moment for servers to start
+sleep 2
+
+# Check if all servers are still running
+if ! kill -0 $SERVER_PID_1 2>/dev/null; then
+    echo -e "${RED}Error: Renoter 1 failed to start. Check server1.log for details.${NC}"
+    cleanup
+    exit 1
+fi
+if ! kill -0 $SERVER_PID_2 2>/dev/null; then
+    echo -e "${RED}Error: Renoter 2 failed to start. Check server2.log for details.${NC}"
+    cleanup
+    exit 1
+fi
+if ! kill -0 $SERVER_PID_3 2>/dev/null; then
+    echo -e "${RED}Error: Renoter 3 failed to start. Check server3.log for details.${NC}"
+    cleanup
     exit 1
 fi
 
@@ -137,23 +188,37 @@ if ! kill -0 $CLIENT_PID 2>/dev/null; then
     exit 1
 fi
 
-echo -e "${GREEN}Both processes started successfully!${NC}"
+echo -e "${GREEN}All processes started successfully!${NC}"
 echo ""
-echo "Server PID: $SERVER_PID"
+echo "Renoter 1 PID: $SERVER_PID_1"
+echo "Renoter 2 PID: $SERVER_PID_2"
+echo "Renoter 3 PID: $SERVER_PID_3"
 echo "Client PID: $CLIENT_PID"
 echo ""
 echo "Logs:"
-echo "  Server: tail -f server.log"
+echo "  Renoter 1: tail -f server1.log"
+echo "  Renoter 2: tail -f server2.log"
+echo "  Renoter 3: tail -f server3.log"
 echo "  Client: tail -f client.log"
 echo ""
-echo -e "${YELLOW}Press Ctrl+C to stop both processes...${NC}"
+echo -e "${YELLOW}Press Ctrl+C to stop all processes...${NC}"
 
-# Wait for both processes and check their status periodically
-while kill -0 $SERVER_PID 2>/dev/null || kill -0 $CLIENT_PID 2>/dev/null; do
+# Wait for all processes and check their status periodically
+while kill -0 $SERVER_PID_1 2>/dev/null || kill -0 $SERVER_PID_2 2>/dev/null || kill -0 $SERVER_PID_3 2>/dev/null || kill -0 $CLIENT_PID 2>/dev/null; do
     sleep 1
-    # Check if either process died unexpectedly
-    if ! kill -0 $SERVER_PID 2>/dev/null && [ ! -z "$SERVER_PID" ]; then
-        echo -e "${RED}Server process died unexpectedly!${NC}"
+    # Check if any process died unexpectedly
+    if ! kill -0 $SERVER_PID_1 2>/dev/null && [ ! -z "$SERVER_PID_1" ]; then
+        echo -e "${RED}Renoter 1 process died unexpectedly!${NC}"
+        cleanup
+        exit 1
+    fi
+    if ! kill -0 $SERVER_PID_2 2>/dev/null && [ ! -z "$SERVER_PID_2" ]; then
+        echo -e "${RED}Renoter 2 process died unexpectedly!${NC}"
+        cleanup
+        exit 1
+    fi
+    if ! kill -0 $SERVER_PID_3 2>/dev/null && [ ! -z "$SERVER_PID_3" ]; then
+        echo -e "${RED}Renoter 3 process died unexpectedly!${NC}"
         cleanup
         exit 1
     fi
@@ -164,6 +229,6 @@ while kill -0 $SERVER_PID 2>/dev/null || kill -0 $CLIENT_PID 2>/dev/null; do
     fi
 done
 
-# Both processes exited naturally
-echo -e "${GREEN}Both processes have exited${NC}"
+# All processes exited naturally
+echo -e "${GREEN}All processes have exited${NC}"
 

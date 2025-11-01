@@ -27,7 +27,7 @@ go build -o renoter-server ./cmd/server
 
 ## Quick Start (Testing)
 
-For easier testing, use the `run.sh` script to start both client and server from a `.env` file:
+For easier testing, use the `run.sh` script to start 3 Renoter servers and 1 client from a `.env` file:
 
 1. Copy the example environment file:
 ```bash
@@ -38,10 +38,13 @@ cp example.env .env
 ```bash
 # Required
 RENOTER_RELAYS=wss://relay1.com,wss://relay2.com
-RENOTER_PATH=npub1...,npub2...
+RENOTER_PATH=npub1...,npub2...,npub3...  # 3 npubs for 3 Renoters
 CLIENT_SERVER_RELAYS=wss://relay1.com,wss://relay2.com
 
-# Optional
+# Optional - Private keys for each Renoter (leave empty to auto-generate)
+RENOTER_PRIVATE_KEY_1=
+RENOTER_PRIVATE_KEY_2=
+RENOTER_PRIVATE_KEY_3=
 CLIENT_LISTEN=:8080
 VERBOSE=
 ```
@@ -54,10 +57,10 @@ VERBOSE=
 The script will:
 - Verify Go code compiles before running
 - Use `go run` to always execute the latest code (no need to rebuild)
-- Start the server in the background
+- Start 3 Renoter servers in the background (each with separate private keys)
 - Start the client in the background
-- Wait for Ctrl+C and cleanly kill both processes
-- Write logs to `server.log` and `client.log`
+- Wait for Ctrl+C and cleanly kill all processes
+- Write logs to `server1.log`, `server2.log`, `server3.log`, and `client.log`
 
 ## Usage
 
