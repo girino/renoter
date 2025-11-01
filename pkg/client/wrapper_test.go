@@ -137,7 +137,7 @@ func TestWrapEvent_ReverseOrder(t *testing.T) {
 	}
 }
 
-func TestPadEventToPowerOfTwo(t *testing.T) {
+func TestPadEventToMultipleOf64(t *testing.T) {
 	// Create a test event
 	testEvent := &nostr.Event{
 		Kind:      1,
@@ -148,24 +148,24 @@ func TestPadEventToPowerOfTwo(t *testing.T) {
 	testEvent.Sign(testEvent.PubKey)
 
 	// Test padding
-	padded, err := padEventToPowerOfTwo(testEvent)
+	padded, err := padEventToMultipleOf64(testEvent)
 	if err != nil {
-		t.Fatalf("padEventToPowerOfTwo() error = %v", err)
+		t.Fatalf("padEventToMultipleOf64() error = %v", err)
 	}
 
 	if padded == nil {
-		t.Fatal("padEventToPowerOfTwo() returned nil")
+		t.Fatal("padEventToMultipleOf64() returned nil")
 	}
 
-	// Verify padded event size is power of 2
+	// Verify padded event size is multiple of 64
 	paddedJSON, err := json.Marshal(padded)
 	if err != nil {
 		t.Fatalf("Failed to serialize padded event: %v", err)
 	}
 
 	size := len(paddedJSON)
-	if !isPowerOfTwo(size) {
-		t.Errorf("Padded event size %d is not a power of 2", size)
+	if size%64 != 0 {
+		t.Errorf("Padded event size %d is not a multiple of 64", size)
 	}
 
 	// Verify padding tags are present
@@ -176,9 +176,9 @@ func TestPadEventToPowerOfTwo(t *testing.T) {
 			break
 		}
 	}
-	if !hasPadding && len(paddedJSON) == size {
-		// Only check for padding tag if size changed (might already be power of 2)
-		t.Log("Event may have already been power of 2, no padding needed")
+	if !hasPadding && size%64 == 0 {
+		// Only check for padding tag if size changed (might already be multiple of 64)
+		t.Log("Event may have already been multiple of 64, no padding needed")
 	}
 }
 

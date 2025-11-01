@@ -13,10 +13,10 @@ import (
 	"github.com/nbd-wtf/go-nostr/nip44"
 )
 
-// padEventToPowerOfTwo adds padding tags to an event to make its serialized size a power of 2.
-// Returns a new event with padding tags added, or the original event if already a power of 2.
-// Accounts for ID, signature, and padding tag overhead before calculating target size.
-func padEventToPowerOfTwo(event *nostr.Event) (*nostr.Event, error) {
+// padEventToMultipleOf64 adds padding tags to an event to make its serialized size a multiple of 64 bytes.
+// Returns a new event with padding tags added, or the original event if already a multiple of 64.
+// Accounts for padding tag overhead before calculating target size.
+func padEventToMultipleOf64(event *nostr.Event) (*nostr.Event, error) {
 	// Create a copy to avoid modifying the original
 	paddedEvent := *event
 	if paddedEvent.Tags == nil {
@@ -39,21 +39,21 @@ func padEventToPowerOfTwo(event *nostr.Event) (*nostr.Event, error) {
 	testEventWithEmptyPadding.Tags = append(testEventWithEmptyPadding.Tags, nostr.Tag{"padding", ""})
 	testJSONWithEmptyPadding, _ := json.Marshal(&testEventWithEmptyPadding)
 	tagBaseSize := len(testJSONWithEmptyPadding) - currentSize
-	logging.DebugMethod("client.wrapper", "padEventToPowerOfTwo", "Padding tag base size: %d bytes", tagBaseSize)
+	logging.DebugMethod("client.wrapper", "padEventToMultipleOf64", "Padding tag base size: %d bytes", tagBaseSize)
 
 	// Calculate total size including padding tag base
 	totalSize := currentSize + tagBaseSize
-	logging.Info("client.wrapper.padEventToPowerOfTwo: tagBaseSize=%d, currentSize=%d, totalSize=%d", tagBaseSize, currentSize, totalSize)
+	logging.Info("client.wrapper.padEventToMultipleOf64: tagBaseSize=%d, currentSize=%d, totalSize=%d", tagBaseSize, currentSize, totalSize)
 
-	// Find next power of 2 for the total size
-	nextPowerOf2 := nextPowerOfTwo(totalSize)
+	// Find next multiple of 64 for the total size
+	nextMultipleOf64 := nextMultipleOf64(totalSize)
 
 	// Calculate exact padding needed in the padding string
-	paddingNeeded := nextPowerOf2 - totalSize
+	paddingNeeded := nextMultipleOf64 - totalSize
 
-	// If no padding needed (already power of 2), return as-is
+	// If no padding needed (already multiple of 64), return as-is
 	if paddingNeeded == 0 {
-		logging.DebugMethod("client.wrapper", "padEventToPowerOfTwo", "Event already at power of 2 size: %d bytes", currentSize)
+		logging.DebugMethod("client.wrapper", "padEventToMultipleOf64", "Event already at multiple of 64 size: %d bytes", currentSize)
 		return &paddedEvent, nil
 	}
 
@@ -76,33 +76,20 @@ func padEventToPowerOfTwo(event *nostr.Event) (*nostr.Event, error) {
 	// Add padding tag
 	paddedEvent.Tags = append(paddedEvent.Tags, nostr.Tag{"padding", paddingString})
 
-	logging.DebugMethod("client.wrapper", "padEventToPowerOfTwo", "Added padding: %d bytes needed, event size: %d -> target: %d", paddingNeeded, currentSize, nextPowerOf2)
+	logging.DebugMethod("client.wrapper", "padEventToMultipleOf64", "Added padding: %d bytes needed, event size: %d -> target: %d", paddingNeeded, currentSize, nextMultipleOf64)
 
 	return &paddedEvent, nil
 }
 
-// nextPowerOfTwo returns the smallest power of 2 that is >= n.
-func nextPowerOfTwo(n int) int {
+// nextMultipleOf64 returns the smallest multiple of 64 that is >= n.
+func nextMultipleOf64(n int) int {
 	if n <= 0 {
-		return 1
+		return 64
 	}
-	if isPowerOfTwo(n) {
+	if n%64 == 0 {
 		return n
 	}
-	// Find next power of 2 using bit manipulation
-	power := 1
-	for power < n {
-		power <<= 1
-	}
-	return power
-}
-
-// isPowerOfTwo checks if a number is a power of 2.
-func isPowerOfTwo(n int) bool {
-	if n <= 0 {
-		return false
-	}
-	return (n & (n - 1)) == 0
+	return ((n + 63) / 64) * 64
 }
 
 // WrapEvent creates nested wrapper events for the given Renoter path.
@@ -128,14 +115,14 @@ func WrapEvent(originalEvent *nostr.Event, renterPath [][]byte) (*nostr.Event, e
 
 		logging.DebugMethod("client.wrapper", "WrapEvent", "Wrapping layer %d/%d for Renoter pubkey: %s (first 16 chars: %s)", len(renterPath)-i, len(renterPath), renoterPubkey, renoterPubkey[:16])
 
-		// Pad event to power of 2 before encrypting
-		logging.DebugMethod("client.wrapper", "WrapEvent", "Padding event to power of 2 (layer %d)", i)
-		paddedEvent, err := padEventToPowerOfTwo(currentEvent)
+		// Pad event to multiple of 64 bytes before encrypting
+		logging.DebugMethod("client.wrapper", "WrapEvent", "Padding event to multiple of 64 bytes (layer %d)", i)
+		paddedEvent, err := padEventToMultipleOf64(currentEvent)
 		if err != nil {
 			logging.Error("client.wrapper.WrapEvent: failed to pad event at layer %d: %v", i, err)
 			return nil, fmt.Errorf("failed to pad event: %w", err)
 		}
-		logging.DebugMethod("client.wrapper", "WrapEvent", "Event padded to power of 2 (layer %d)", i)
+		logging.DebugMethod("client.wrapper", "WrapEvent", "Event padded to multiple of 64 bytes (layer %d)", i)
 
 		// Serialize padded event to JSON
 		logging.DebugMethod("client.wrapper", "WrapEvent", "Serializing padded event to JSON (layer %d)", i)
