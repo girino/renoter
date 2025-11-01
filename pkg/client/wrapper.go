@@ -104,6 +104,9 @@ func WrapEvent(originalEvent *nostr.Event, renterPath [][]byte) (*nostr.Event, e
 	}
 
 	// Start with the original event
+	// Note: We don't pad the original event because it's already signed,
+	// and padding would invalidate the signature. We only pad wrapper events
+	// (which we create and sign ourselves after padding).
 	currentEvent := originalEvent
 
 	logging.DebugMethod("client.wrapper", "WrapEvent", "Beginning nested wrapping in reverse order (last Renoter first)")
@@ -115,31 +118,9 @@ func WrapEvent(originalEvent *nostr.Event, renterPath [][]byte) (*nostr.Event, e
 
 		logging.DebugMethod("client.wrapper", "WrapEvent", "Wrapping layer %d/%d for Renoter pubkey: %s (first 16 chars: %s)", len(renterPath)-i, len(renterPath), renoterPubkey, renoterPubkey[:16])
 
-		// Pad the inner event to multiple of 64 bytes before encrypting
-		// Note: For the inner event, we pad before encryption.
-		// For the wrapper event itself, we pad after creation but before signing (see below).
-		logging.DebugMethod("client.wrapper", "WrapEvent", "Padding inner event to multiple of 64 bytes (layer %d)", i)
-		paddedEvent, err := padEventToMultipleOf64(currentEvent)
-		if err != nil {
-			logging.Error("client.wrapper.WrapEvent: failed to pad inner event at layer %d: %v", i, err)
-			return nil, fmt.Errorf("failed to pad inner event: %w", err)
-		}
-		logging.DebugMethod("client.wrapper", "WrapEvent", "Inner event padded to multiple of 64 bytes (layer %d)", i)
-
-		// Recalculate the event ID after padding to ensure it matches the padded structure
-		// The ID might have been computed before padding was applied
-		oldID := paddedEvent.ID
-		newID := paddedEvent.GetID()
-		if oldID != newID {
-			paddedEvent.ID = newID
-			logging.DebugMethod("client.wrapper", "WrapEvent", "Recalculated inner event ID after padding: %s -> %s (layer %d)", oldID, newID, i)
-		}
-
-		// Validate the ID is correct for the padded event
-		if !paddedEvent.CheckID() {
-			logging.Error("client.wrapper.WrapEvent: padded inner event ID %s failed CheckID validation (layer %d)", paddedEvent.ID, i)
-			return nil, fmt.Errorf("invalid inner event ID after padding at layer %d", i)
-		}
+		// Don't pad inner events - they may already be signed, and padding would invalidate the signature.
+		// We only pad wrapper events (which we create and sign ourselves after padding).
+		// Serialize the inner event as-is for encryption
 
 		// Serialize padded event to JSON (with correct ID)
 		logging.DebugMethod("client.wrapper", "WrapEvent", "Serializing padded event to JSON (layer %d)", i)
