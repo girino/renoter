@@ -31,7 +31,7 @@ func SetupRelay(relay *khatru.Relay, renterPath [][]byte, serverRelayURLs []stri
 
 	// Helper function to process and wrap events
 	processEvent := func(ctx context.Context, event *nostr.Event) {
-		logging.Info("client.relay.processEvent: Intercepted incoming event: ID=%s, Kind=%d, PubKey=%s", event.ID, event.Kind, event.PubKey[:16])
+		logging.Info("client.relay.processEvent: [CLIENT INTERCEPT] Intercepted incoming event: ID=%s, Kind=%d, PubKey=%s", event.ID, event.Kind, event.PubKey[:16])
 
 		// Skip wrapper events (kind 29000) to prevent infinite loops
 		if event.Kind == 29000 {
