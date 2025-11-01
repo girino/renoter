@@ -66,7 +66,7 @@ func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
 			innerEvent.Tags = append(innerEvent.Tags, tag)
 		}
 	}
-	
+
 	// After removing padding, verify the event ID matches the original structure
 	originalID := innerEvent.ID
 	calculatedID := innerEvent.GetID()
@@ -75,7 +75,7 @@ func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
 		logging.Error("server.handler.HandleEvent: inner event ID mismatch after removing padding: original=%s, calculated=%s", originalID, calculatedID)
 		return fmt.Errorf("inner event ID mismatch after removing padding")
 	}
-	
+
 	// Verify signature is valid for the unpadded event
 	if innerEvent.Sig != "" {
 		valid, err := innerEvent.CheckSignature()
@@ -91,7 +91,7 @@ func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
 	} else {
 		logging.DebugMethod("server.handler", "HandleEvent", "Inner event has no signature (unsigned event)")
 	}
-	
+
 	// Note: The wrapper event (outer event) was already checked for replay attacks in ProcessEvent
 	// ProcessEvent ensures we don't process the same wrapper event twice, so HandleEvent
 	// will only be called once per wrapper event. We don't need additional replay checks here.
