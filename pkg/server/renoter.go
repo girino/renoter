@@ -19,8 +19,11 @@ type Renoter struct {
 	PublicKey string
 
 	// Event store for replay detection (in-memory map of event IDs)
+	// Kept small (max 5K entries) to fit in memory
 	eventStore map[string]bool
+	eventKeys  []string // Track insertion order for pruning
 	eventMu    sync.RWMutex
+	maxCacheSize int
 
 	// SimplePool for managing multiple relay connections (used for both listening and forwarding)
 	pool      *nostr.SimplePool
@@ -63,12 +66,14 @@ func NewRenoter(ctx context.Context, privateKey string, relayURLs []string) (*Re
 
 	logging.Info("server.renoter.NewRenoter: Created Renoter instance, pubkey: %s (first 16 chars), %d relays", pubkey[:16], len(relayURLs))
 
-	return &Renoter{
-		PrivateKey: privateKey,
-		PublicKey:  pubkey,
-		eventStore: make(map[string]bool),
-		pool:       pool,
-		relayURLs:  relayURLs,
+		return &Renoter{
+		PrivateKey:  privateKey,
+		PublicKey:   pubkey,
+		eventStore:  make(map[string]bool),
+		eventKeys:   make([]string, 0, 5100), // Pre-allocate slightly more than max to reduce reallocations
+		pool:        pool,
+		relayURLs:   relayURLs,
+		maxCacheSize: 5000,
 	}, nil
 }
 
@@ -94,8 +99,23 @@ func (r *Renoter) ProcessEvent(ctx context.Context, event *nostr.Event) error {
 	}
 	// Mark event as seen immediately (before any other processing) to prevent concurrent processing
 	r.eventStore[event.ID] = true
+	r.eventKeys = append(r.eventKeys, event.ID)
+	
+	// Prune cache if it exceeds max size (keep at most 5K entries)
+	if len(r.eventKeys) > r.maxCacheSize {
+		// Remove oldest entries (FIFO eviction)
+		removeCount := len(r.eventKeys) - r.maxCacheSize
+		for i := 0; i < removeCount; i++ {
+			oldestID := r.eventKeys[i]
+			delete(r.eventStore, oldestID)
+		}
+		// Keep only the recent entries
+		r.eventKeys = r.eventKeys[removeCount:]
+		logging.DebugMethod("server.renoter", "ProcessEvent", "Pruned replay cache: removed %d oldest entries, cache size now: %d", removeCount, len(r.eventKeys))
+	}
+	
 	r.eventMu.Unlock()
-	logging.DebugMethod("server.renoter", "ProcessEvent", "Atomically checked and marked event %s as seen in event store", event.ID)
+	logging.DebugMethod("server.renoter", "ProcessEvent", "Atomically checked and marked event %s as seen in event store (cache size: %d)", event.ID, len(r.eventKeys))
 
 	// Verify signature
 	logging.DebugMethod("server.renoter", "ProcessEvent", "Verifying signature for event %s", event.ID)
