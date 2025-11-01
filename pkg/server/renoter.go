@@ -89,17 +89,18 @@ func (r *Renoter) ProcessEvent(ctx context.Context, event *nostr.Event) error {
 
 	// Check for replay attacks and mark event atomically to prevent race conditions
 	// This prevents the same event from being processed multiple times when received from multiple relays
+	// CRITICAL: The entire check-and-mark must be atomic to prevent race conditions
 	r.eventMu.Lock()
-	alreadyProcessed := r.eventStore[event.ID]
-	if alreadyProcessed {
+	if r.eventStore[event.ID] {
 		r.eventMu.Unlock()
 		logging.Warn("server.renoter.ProcessEvent: Replay attack detected, event %s already processed", event.ID)
 		return fmt.Errorf("event %s already processed (replay attack)", event.ID)
 	}
-	// Mark event as seen immediately (before signature check) to prevent concurrent processing
+	// Mark event as seen immediately (before any other processing) to prevent concurrent processing
+	// This must happen in the same critical section as the check above
 	r.eventStore[event.ID] = true
 	r.eventMu.Unlock()
-	logging.DebugMethod("server.renoter", "ProcessEvent", "Marked event %s as seen in event store", event.ID)
+	logging.DebugMethod("server.renoter", "ProcessEvent", "Atomically checked and marked event %s as seen in event store", event.ID)
 
 	// Verify signature
 	logging.DebugMethod("server.renoter", "ProcessEvent", "Verifying signature for event %s", event.ID)
