@@ -31,11 +31,6 @@ func SetupRelay(relay *khatru.Relay, renterPath [][]byte, serverRelayURLs []stri
 
 	// Helper function to process and wrap events
 	processEvent := func(ctx context.Context, event *nostr.Event) {
-		// Skip wrapper events (kind 29000) to prevent infinite loops
-		if event.Kind == 29000 {
-			logging.DebugMethod("client.relay", "processEvent", "Skipping wrapper event (kind 29000): %s", event.ID)
-			return
-		}
 
 		// Wrap the event for the Renoter path
 		wrappedEvent, err := WrapEvent(event, renterPath)
