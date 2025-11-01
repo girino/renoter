@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/fiatjaf/khatru"
 	"github.com/girino/nostr-lib/logging"
