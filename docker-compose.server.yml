@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  renoter-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    image: renoter-server:latest
+    container_name: renoter-server
+    command: ["./renoter-server", "-relays=${RENOTER_RELAYS}", "-private-key=${RENOTER_PRIVATE_KEY}"]
+    environment:
+      - VERBOSE=${VERBOSE:-}
+    restart: unless-stopped
+    networks:
+      - renoter-network
+
+networks:
+  renoter-network:
+    driver: bridge
+

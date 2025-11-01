@@ -25,6 +25,64 @@ go build -o renoter-client ./cmd/client
 go build -o renoter-server ./cmd/server
 ```
 
+## Docker Deployment
+
+### Server Deployment
+
+1. Copy the server environment file:
+```bash
+cp example.env.server .env
+```
+
+2. Edit `.env` and configure:
+   - `RENOTER_PRIVATE_KEY`: Your server's private key (hex format)
+   - `RENOTER_RELAYS`: Comma-separated relay URLs
+   - `VERBOSE`: Optional debug logging
+
+3. Build and run:
+```bash
+docker-compose -f docker-compose.server.yml up -d
+```
+
+4. View logs:
+```bash
+docker-compose -f docker-compose.server.yml logs -f
+```
+
+### Client Deployment
+
+1. Copy the client environment file:
+```bash
+cp example.env.client .env
+```
+
+2. Edit `.env` and configure:
+   - `RENOTER_PATH`: Comma-separated npubs of Renoter servers
+   - `CLIENT_SERVER_RELAYS`: Relay URLs where wrapped events are sent
+   - `CLIENT_LISTEN`: Listen address (default: :8080)
+   - `CLIENT_PORT`: Docker port mapping (default: 8080)
+   - `VERBOSE`: Optional debug logging
+
+3. Build and run:
+```bash
+docker-compose -f docker-compose.client.yml up -d
+```
+
+4. View logs:
+```bash
+docker-compose -f docker-compose.client.yml logs -f
+```
+
+### Stopping Services
+
+```bash
+# Stop server
+docker-compose -f docker-compose.server.yml down
+
+# Stop client
+docker-compose -f docker-compose.client.yml down
+```
+
 ## Quick Start (Testing)
 
 For easier testing, use the `run.sh` script to start 3 Renoter servers and 1 client from a `.env` file:
