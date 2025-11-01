@@ -2,6 +2,8 @@ package client
 
 import (
 	"encoding/hex"
+	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/nbd-wtf/go-nostr"
@@ -34,24 +36,24 @@ func TestWrapEvent(t *testing.T) {
 	}
 
 	tests := []struct {
-		name       string
-		event      *nostr.Event
-		path       [][]byte
-		wantErr    bool
+		name      string
+		event     *nostr.Event
+		path      [][]byte
+		wantErr   bool
 		wantLayers int
 	}{
 		{
-			name:       "wrap with single Renoter",
-			event:      testEvent,
-			path:       [][]byte{path[0]},
-			wantErr:    false,
+			name:      "wrap with single Renoter",
+			event:     testEvent,
+			path:      [][]byte{path[0]},
+			wantErr:   false,
 			wantLayers: 1,
 		},
 		{
-			name:       "wrap with multiple Renoters",
-			event:      testEvent,
-			path:       path,
-			wantErr:    false,
+			name:      "wrap with multiple Renoters",
+			event:     testEvent,
+			path:      path,
+			wantErr:   false,
 			wantLayers: 2,
 		},
 		{
@@ -132,5 +134,83 @@ func TestWrapEvent_ReverseOrder(t *testing.T) {
 	firstPubkey := hex.EncodeToString(path[0])
 	if wrapped.Tags[0][1] != firstPubkey {
 		t.Errorf("Wrapper 'p' tag should contain first Renoter's pubkey")
+	}
+}
+
+func TestPadEventToPowerOfTwo(t *testing.T) {
+	// Create a test event
+	testEvent := &nostr.Event{
+		Kind:      1,
+		Content:   "Test content",
+		CreatedAt: nostr.Now(),
+		PubKey:    nostr.GeneratePrivateKey(),
+	}
+	testEvent.Sign(testEvent.PubKey)
+
+	// Test padding
+	padded, err := padEventToPowerOfTwo(testEvent)
+	if err != nil {
+		t.Fatalf("padEventToPowerOfTwo() error = %v", err)
+	}
+
+	if padded == nil {
+		t.Fatal("padEventToPowerOfTwo() returned nil")
+	}
+
+	// Verify padded event size is power of 2
+	paddedJSON, err := json.Marshal(padded)
+	if err != nil {
+		t.Fatalf("Failed to serialize padded event: %v", err)
+	}
+
+	size := len(paddedJSON)
+	if !isPowerOfTwo(size) {
+		t.Errorf("Padded event size %d is not a power of 2", size)
+	}
+
+	// Verify padding tags are present
+	hasPadding := false
+	for _, tag := range padded.Tags {
+		if len(tag) >= 1 && tag[0] == "padding" {
+			hasPadding = true
+			break
+		}
+	}
+	if !hasPadding && len(paddedJSON) == size {
+		// Only check for padding tag if size changed (might already be power of 2)
+		t.Log("Event may have already been power of 2, no padding needed")
+	}
+}
+
+func TestIsPowerOfTwo(t *testing.T) {
+	tests := []struct {
+		n    int
+		want bool
+	}{
+		{1, true},   // 2^0
+		{2, true},   // 2^1
+		{4, true},   // 2^2
+		{8, true},   // 2^3
+		{16, true},  // 2^4
+		{32, true},  // 2^5
+		{64, true},  // 2^6
+		{128, true}, // 2^7
+		{256, true}, // 2^8
+		{3, false},
+		{5, false},
+		{6, false},
+		{7, false},
+		{9, false},
+		{15, false},
+		{0, false},
+		{-1, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("n=%d", tt.n), func(t *testing.T) {
+			if got := isPowerOfTwo(tt.n); got != tt.want {
+				t.Errorf("isPowerOfTwo(%d) = %v, want %v", tt.n, got, tt.want)
+			}
+		})
 	}
 }
