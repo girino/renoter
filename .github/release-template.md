@@ -45,7 +45,7 @@ docker run -d \
   -p 8080:8080 \
   -e RENOTER_PATH="npub1...,npub2..." \
   -e CLIENT_SERVER_RELAYS="wss://relay1.com,wss://relay2.com" \
-  ghcr.io/${{ github.repository_owner }}/renoter-client:${{ version }}
+          ghcr.io/${{ github.repository }}/renoter-client:${{ version }}
 ```
 
 **Server:**
@@ -54,7 +54,7 @@ docker pull ghcr.io/${{ github.repository_owner }}/renoter-server:${{ version }}
 docker run -d \
   -e RENOTER_PRIVATE_KEY="your-private-key-hex" \
   -e RENOTER_RELAYS="wss://relay1.com,wss://relay2.com" \
-  ghcr.io/${{ github.repository_owner }}/renoter-server:${{ version }}
+          ghcr.io/${{ github.repository }}/renoter-server:${{ version }}
 ```
 
 ### Docker Compose

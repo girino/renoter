@@ -124,8 +124,8 @@ jobs:
           file: ./Dockerfile.client
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/renoter-client:${{ steps.version.outputs.docker_tag }}
-            ghcr.io/${{ github.repository_owner }}/renoter-client:${{ steps.version.outputs.docker_tag_latest }}
+            ghcr.io/${{ github.repository }}/renoter-client:${{ steps.version.outputs.docker_tag }}
+            ${{ steps.version.outputs.docker_tag_latest != '' && format('ghcr.io/{0}/renoter-client:{1}', github.repository, steps.version.outputs.docker_tag_latest) || '' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -136,8 +136,8 @@ jobs:
           file: ./Dockerfile.server
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/renoter-server:${{ steps.version.outputs.docker_tag }}
-            ghcr.io/${{ github.repository_owner }}/renoter-server:${{ steps.version.outputs.docker_tag_latest }}
+            ghcr.io/${{ github.repository }}/renoter-server:${{ steps.version.outputs.docker_tag }}
+            ${{ steps.version.outputs.docker_tag_latest != '' && format('ghcr.io/{0}/renoter-server:{1}', github.repository, steps.version.outputs.docker_tag_latest) || '' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -227,21 +227,21 @@ jobs:
 
           **Client:**
           ```bash
-          docker pull ghcr.io/${{ github.repository_owner }}/renoter-client:${{ steps.version.outputs.version }}
+          docker pull ghcr.io/${{ github.repository }}/renoter-client:${{ steps.version.outputs.version }}
           docker run -d \
             -p 8080:8080 \
             -e RENOTER_PATH="npub1...,npub2..." \
             -e CLIENT_SERVER_RELAYS="wss://relay1.com,wss://relay2.com" \
-            ghcr.io/${{ github.repository_owner }}/renoter-client:${{ steps.version.outputs.version }}
+            ghcr.io/${{ github.repository }}/renoter-client:${{ steps.version.outputs.version }}
           ```
 
           **Server:**
           ```bash
-          docker pull ghcr.io/${{ github.repository_owner }}/renoter-server:${{ steps.version.outputs.version }}
+          docker pull ghcr.io/${{ github.repository }}/renoter-server:${{ steps.version.outputs.version }}
           docker run -d \
             -e RENOTER_PRIVATE_KEY="your-private-key-hex" \
             -e RENOTER_RELAYS="wss://relay1.com,wss://relay2.com" \
-            ghcr.io/${{ github.repository_owner }}/renoter-server:${{ steps.version.outputs.version }}
+            ghcr.io/${{ github.repository }}/renoter-server:${{ steps.version.outputs.version }}
           ```
 
           ### Docker Compose
