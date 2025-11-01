@@ -107,7 +107,8 @@ func TestEventCache_Pruning(t *testing.T) {
 
 	// Fill cache to exactly max size
 	for i := 0; i < 10; i++ {
-		cache.CheckAndMark("event"+string(rune(i)), now)
+		eventID := "event" + string(rune('0'+i)) // Use '0'+i to get '0', '1', ..., '9'
+		cache.CheckAndMark(eventID, now)
 	}
 
 	if cache.Size() != 10 {
@@ -115,6 +116,7 @@ func TestEventCache_Pruning(t *testing.T) {
 	}
 
 	// Add one more event to trigger pruning (prune happens at >= maxSize)
+	// Pruning removes 25% (10/4 = 2 events), then adds the new event
 	cache.CheckAndMark("event10", now)
 
 	// Cache should be pruned - 25% removed (2 events), so 8 old + 1 new = 9
@@ -124,8 +126,8 @@ func TestEventCache_Pruning(t *testing.T) {
 		t.Errorf("Cache should be pruned to %d, got %d", expectedSize, size)
 	}
 
-	// First events should be removed (FIFO) - event0 and event1 should be pruned
-	// After pruning, event0 should not be in cache
+	// First 2 events should be removed (FIFO) - event0 and event1 should be pruned
+	// After pruning, they should NOT be in cache (CheckAndMark returns false = not a replay)
 	if cache.CheckAndMark("event0", now) {
 		t.Error("First event 'event0' should have been pruned")
 	}
@@ -133,9 +135,12 @@ func TestEventCache_Pruning(t *testing.T) {
 		t.Error("Second event 'event1' should have been pruned")
 	}
 
-	// Later events should still be in cache
+	// event2 and later should still be in cache (CheckAndMark returns true = replay detected)
 	if !cache.CheckAndMark("event2", now) {
 		t.Error("Event 'event2' should still be in cache")
+	}
+	if !cache.CheckAndMark("event3", now) {
+		t.Error("Event 'event3' should still be in cache")
 	}
 }
 
