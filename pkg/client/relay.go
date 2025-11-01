@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/fiatjaf/khatru"
 	"github.com/girino/nostr-lib/logging"
@@ -29,8 +30,23 @@ func SetupRelay(relay *khatru.Relay, renterPath [][]byte, serverRelayURLs []stri
 	}
 	logging.Info("client.relay.SetupRelay: Successfully initialized SimplePool with %d server relays", len(serverRelayURLs))
 
+	// Track processed events to prevent duplicate wrapping
+	// This is needed because OnEventSaved and OnEphemeralEvent might both fire for the same event
+	processedEvents := make(map[string]bool)
+	var processedMu sync.Mutex
+
 	// Helper function to process and wrap events
 	processEvent := func(ctx context.Context, event *nostr.Event) {
+		// Check if event was already processed (deduplication)
+		processedMu.Lock()
+		if processedEvents[event.ID] {
+			processedMu.Unlock()
+			logging.DebugMethod("client.relay", "processEvent", "Event %s already processed, skipping duplicate", event.ID)
+			return
+		}
+		processedEvents[event.ID] = true
+		processedMu.Unlock()
+		logging.DebugMethod("client.relay", "processEvent", "Marked event %s as processed", event.ID)
 		logging.DebugMethod("client.relay", "processEvent", "Intercepted incoming event: ID=%s, Kind=%d, PubKey=%s", event.ID, event.Kind, event.PubKey[:16])
 
 		// Skip wrapper events (kind 29000) to prevent infinite loops
