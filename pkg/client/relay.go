@@ -19,10 +19,15 @@ func SetupRelay(relay *khatru.Relay, renterPath [][]byte, serverRelayURLs []stri
 	serverPool := nostr.NewSimplePool(ctx)
 	logging.DebugMethod("client.relay", "SetupRelay", "Created SimplePool for %d server relays", len(serverRelayURLs))
 
-	// Note: We don't call EnsureRelay here - connections will be established lazily
-	// when PublishMany is called. This allows the client to start even if relays
-	// are temporarily unavailable.
-	logging.Info("client.relay.SetupRelay: SimplePool initialized, connections will be established on-demand when publishing events")
+	// Ensure all relays are available in the pool (they'll be connected on-demand)
+	for _, url := range serverRelayURLs {
+		_, err := serverPool.EnsureRelay(url)
+		if err != nil {
+			logging.Error("client.relay.SetupRelay: failed to ensure relay %s in pool: %v", url, err)
+			return fmt.Errorf("failed to ensure relay %s: %w", url, err)
+		}
+	}
+	logging.Info("client.relay.SetupRelay: Successfully initialized SimplePool with %d server relays", len(serverRelayURLs))
 
 	// Helper function to process and wrap events
 	processEvent := func(ctx context.Context, event *nostr.Event) {
