@@ -165,13 +165,14 @@ func (r *Renoter) SubscribeToWrappedEvents(ctx context.Context) error {
 				}
 
 				// Handle (decrypt and forward)
-				logging.Info("server.handler.SubscribeToWrappedEvents: [CALLING HANDLEEVENT] About to HandleEvent for event %s from relay %s", ev.ID, relayEvent.Relay.URL)
+				logging.Info("server.handler.SubscribeToWrappedEvents: [CALLING HANDLEEVENT] About to call HandleEvent for event %s from relay %s", ev.ID, relayEvent.Relay.URL)
 				err = r.HandleEvent(ctx, ev)
-
+				logging.Info("server.handler.SubscribeToWrappedEvents: [HANDLEEVENT RETURNED] HandleEvent returned for event %s with error=%v", ev.ID, err != nil)
+				
 				// Mark as processed (regardless of success/failure)
 				processedEvents[ev.ID] = true
 				delete(processingEvents, ev.ID)
-
+				
 				if err != nil {
 					logging.Warn("server.handler.SubscribeToWrappedEvents: [HANDLEEVENT ERROR] Error handling event %s: %v", ev.ID, err)
 					continue
