@@ -13,10 +13,13 @@ import (
 	"github.com/nbd-wtf/go-nostr/nip44"
 )
 
-// padEventToMultipleOf64 adds padding tags to an event to make its serialized size a multiple of 64 bytes.
-// Returns a new event with padding tags added, or the original event if already a multiple of 64.
+const MaxWrappedEventSize = 32 * 1024 // 32KB maximum size for wrapped events after encryption
+
+// padEventToPowerOf2 adds padding tags to an event to make its serialized size a power of 2.
+// Returns a new event with padding tags added, or the original event if already a power of 2.
 // Accounts for padding tag overhead before calculating target size.
-func padEventToMultipleOf64(event *nostr.Event) (*nostr.Event, error) {
+// Limits padding to MaxWrappedEventSize.
+func padEventToPowerOf2(event *nostr.Event) (*nostr.Event, error) {
 	// Create a copy to avoid modifying the original
 	paddedEvent := *event
 	if paddedEvent.Tags == nil {
@@ -39,21 +42,27 @@ func padEventToMultipleOf64(event *nostr.Event) (*nostr.Event, error) {
 	testEventWithEmptyPadding.Tags = append(testEventWithEmptyPadding.Tags, nostr.Tag{"padding", ""})
 	testJSONWithEmptyPadding, _ := json.Marshal(&testEventWithEmptyPadding)
 	tagBaseSize := len(testJSONWithEmptyPadding) - currentSize
-	logging.DebugMethod("client.wrapper", "padEventToMultipleOf64", "Padding tag base size: %d bytes", tagBaseSize)
+	logging.DebugMethod("client.wrapper", "padEventToPowerOf2", "Padding tag base size: %d bytes", tagBaseSize)
 
 	// Calculate total size including padding tag base
 	totalSize := currentSize + tagBaseSize
-	logging.Info("client.wrapper.padEventToMultipleOf64: tagBaseSize=%d, currentSize=%d, totalSize=%d", tagBaseSize, currentSize, totalSize)
+	logging.Info("client.wrapper.padEventToPowerOf2: tagBaseSize=%d, currentSize=%d, totalSize=%d", tagBaseSize, currentSize, totalSize)
 
-	// Find next multiple of 64 for the total size
-	nextMultipleOf64 := nextMultipleOf64(totalSize)
+	// Find next power of 2 for the total size
+	nextPowerOf2 := nextPowerOf2(totalSize)
+
+	// Limit to MaxWrappedEventSize
+	if nextPowerOf2 > MaxWrappedEventSize {
+		logging.Error("client.wrapper.padEventToPowerOf2: event size %d exceeds maximum %d bytes after padding", nextPowerOf2, MaxWrappedEventSize)
+		return nil, fmt.Errorf("event size would exceed maximum %d bytes", MaxWrappedEventSize)
+	}
 
 	// Calculate exact padding needed in the padding string
-	paddingNeeded := nextMultipleOf64 - totalSize
+	paddingNeeded := nextPowerOf2 - totalSize
 
-	// If no padding needed (already multiple of 64), return as-is
+	// If no padding needed (already power of 2), return as-is
 	if paddingNeeded == 0 {
-		logging.DebugMethod("client.wrapper", "padEventToMultipleOf64", "Event already at multiple of 64 size: %d bytes", currentSize)
+		logging.DebugMethod("client.wrapper", "padEventToPowerOf2", "Event already at power of 2 size: %d bytes", currentSize)
 		return &paddedEvent, nil
 	}
 
@@ -76,20 +85,25 @@ func padEventToMultipleOf64(event *nostr.Event) (*nostr.Event, error) {
 	// Add padding tag
 	paddedEvent.Tags = append(paddedEvent.Tags, nostr.Tag{"padding", paddingString})
 
-	logging.DebugMethod("client.wrapper", "padEventToMultipleOf64", "Added padding: %d bytes needed, event size: %d -> target: %d", paddingNeeded, currentSize, nextMultipleOf64)
+	logging.DebugMethod("client.wrapper", "padEventToPowerOf2", "Added padding: %d bytes needed, event size: %d -> target: %d", paddingNeeded, currentSize, nextPowerOf2)
 
 	return &paddedEvent, nil
 }
 
-// nextMultipleOf64 returns the smallest multiple of 64 that is >= n.
-func nextMultipleOf64(n int) int {
+// nextPowerOf2 returns the smallest power of 2 that is >= n.
+func nextPowerOf2(n int) int {
 	if n <= 0 {
-		return 64
+		return 1
 	}
-	if n%64 == 0 {
-		return n
+	if n == 1 {
+		return 1
 	}
-	return ((n + 63) / 64) * 64
+	// Find the next power of 2
+	power := 1
+	for power < n {
+		power *= 2
+	}
+	return power
 }
 
 // WrapEvent creates nested wrapper events for the given Renoter path.
@@ -123,7 +137,7 @@ func WrapEvent(originalEvent *nostr.Event, renterPath [][]byte) (*nostr.Event, e
 		// IMPORTANT: Pad WITHOUT modifying ID or signature. The server will remove padding tags
 		// before publishing, restoring the original event structure with valid signature.
 		logging.DebugMethod("client.wrapper", "WrapEvent", "Padding inner event before encryption (preserving original ID and signature, layer %d)", i)
-		paddedEvent, err := padEventToMultipleOf64(currentEvent)
+		paddedEvent, err := padEventToPowerOf2(currentEvent)
 		if err != nil {
 			logging.Error("client.wrapper.WrapEvent: failed to pad inner event at layer %d: %v", i, err)
 			return nil, fmt.Errorf("failed to pad inner event: %w", err)
@@ -136,7 +150,7 @@ func WrapEvent(originalEvent *nostr.Event, renterPath [][]byte) (*nostr.Event, e
 		if len(paddedEvent.ID) >= 16 {
 			idPrefix = paddedEvent.ID[:16]
 		}
-		logging.DebugMethod("client.wrapper", "WrapEvent", "Inner event padded to multiple of 64 bytes (original ID=%s signature preserved, layer %d)", idPrefix, i)
+		logging.DebugMethod("client.wrapper", "WrapEvent", "Inner event padded to power of 2 (original ID=%s signature preserved, layer %d)", idPrefix, i)
 
 		// Serialize padded inner event for encryption
 		logging.DebugMethod("client.wrapper", "WrapEvent", "Serializing padded inner event to JSON (layer %d)", i)
@@ -212,6 +226,18 @@ func WrapEvent(originalEvent *nostr.Event, renterPath [][]byte) (*nostr.Event, e
 		logging.DebugMethod("client.wrapper", "WrapEvent", "Completed wrapping layer %d, proceeding to next layer", i)
 	}
 
-	logging.Info("client.wrapper.WrapEvent: Successfully wrapped event through %d Renoter layers, final wrapper event ID: %s", len(renterPath), currentEvent.ID)
+	// Check final wrapper event size (after all encryption layers)
+	// Serialize the final wrapper event to check its size
+	finalEventJSON, err := json.Marshal(currentEvent)
+	if err != nil {
+		logging.Error("client.wrapper.WrapEvent: failed to serialize final wrapper event to check size: %v", err)
+		return nil, fmt.Errorf("failed to serialize final wrapper event: %w", err)
+	}
+	finalSize := len(finalEventJSON)
+	if finalSize > MaxWrappedEventSize {
+		logging.Error("client.wrapper.WrapEvent: final wrapped event size %d bytes exceeds maximum %d bytes", finalSize, MaxWrappedEventSize)
+		return nil, fmt.Errorf("final wrapped event size %d bytes exceeds maximum %d bytes", finalSize, MaxWrappedEventSize)
+	}
+	logging.Info("client.wrapper.WrapEvent: Successfully wrapped event through %d Renoter layers, final wrapper event ID: %s, size: %d bytes", len(renterPath), currentEvent.ID, finalSize)
 	return currentEvent, nil
 }
