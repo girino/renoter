@@ -58,28 +58,27 @@ func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
 	}
 	logging.DebugMethod("server.handler", "HandleEvent", "Deserialized inner event: ID=%s, Kind=%d", innerEvent.ID, innerEvent.Kind)
 
+	// Check if inner event was already published (replay protection for inner events)
+	// This must happen IMMEDIATELY after decryption, before any other processing
+	// CRITICAL: This prevents the same inner event from being published multiple times
+	// even if HandleEvent is somehow called multiple times for the same wrapper event
+	r.eventMu.Lock()
+	if r.eventStore[innerEvent.ID] {
+		r.eventMu.Unlock()
+		logging.Warn("server.handler.HandleEvent: Inner event %s already published, skipping duplicate", innerEvent.ID)
+		return fmt.Errorf("inner event %s already published", innerEvent.ID)
+	}
+	// Mark inner event as published BEFORE any other operations to prevent race conditions
+	r.eventStore[innerEvent.ID] = true
+	r.eventMu.Unlock()
+	logging.DebugMethod("server.handler", "HandleEvent", "Atomically checked and marked inner event %s as published", innerEvent.ID)
+
 	// Check if this is a final event or another wrapper
 	if innerEvent.Kind == 29000 {
 		logging.DebugMethod("server.handler", "HandleEvent", "Inner event is another wrapper (kind 29000), forwarding to next Renoter")
 	} else {
 		logging.Info("server.handler.HandleEvent: Inner event is final event (kind %d), will forward to network", innerEvent.Kind)
 	}
-
-	// Check if inner event was already published (replay protection for inner events)
-	// This prevents the same inner event from being published multiple times
-	// NOTE: We check this BEFORE publishing to prevent publishing the same inner event twice
-	r.eventMu.Lock()
-	innerAlreadyProcessed := r.eventStore[innerEvent.ID]
-	if innerAlreadyProcessed {
-		r.eventMu.Unlock()
-		logging.Warn("server.handler.HandleEvent: Inner event %s already published, skipping duplicate publish", innerEvent.ID)
-		return fmt.Errorf("inner event %s already published", innerEvent.ID)
-	}
-	// Mark inner event as published BEFORE actually publishing to prevent race conditions
-	// If the publish succeeds and we receive it back from a relay, it will be caught here
-	r.eventStore[innerEvent.ID] = true
-	r.eventMu.Unlock()
-	logging.DebugMethod("server.handler", "HandleEvent", "Atomically checked and marked inner event %s as published", innerEvent.ID)
 
 	// Publish inner event to all relays using SimplePool
 	relayURLs := r.GetRelayURLs()
