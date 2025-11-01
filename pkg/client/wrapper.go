@@ -120,16 +120,25 @@ func WrapEvent(originalEvent *nostr.Event, renterPath [][]byte) (*nostr.Event, e
 
 		// Pad inner events BEFORE encrypting (padding is hidden inside encrypted content)
 		// We don't pad outer wrapper events because they're public and padding would leak metadata
+		// If the inner event was already signed, we need to clear the signature before padding,
+		// then the signature will be recalculated when the event is eventually published
 		logging.DebugMethod("client.wrapper", "WrapEvent", "Padding inner event before encryption (layer %d)", i)
-		paddedEvent, err := padEventToMultipleOf64(currentEvent)
+
+		// Clear signature before padding (if present) since padding changes the event structure
+		// The signature will be invalid after padding anyway
+		innerEventCopy := *currentEvent
+		if innerEventCopy.Sig != "" {
+			innerEventCopy.Sig = "" // Clear signature - it will be invalid after padding
+			logging.DebugMethod("client.wrapper", "WrapEvent", "Cleared signature from inner event before padding (layer %d)", i)
+		}
+
+		paddedEvent, err := padEventToMultipleOf64(&innerEventCopy)
 		if err != nil {
 			logging.Error("client.wrapper.WrapEvent: failed to pad inner event at layer %d: %v", i, err)
 			return nil, fmt.Errorf("failed to pad inner event: %w", err)
 		}
 
 		// Recalculate ID after padding to ensure it matches the padded structure
-		// Note: If the event was already signed, the signature will be invalid after padding.
-		// That's OK - inner events are encrypted, and the signature will be validated when decrypted.
 		paddedEvent.ID = paddedEvent.GetID()
 		if !paddedEvent.CheckID() {
 			logging.Error("client.wrapper.WrapEvent: padded inner event ID %s failed CheckID validation (layer %d)", paddedEvent.ID, i)
