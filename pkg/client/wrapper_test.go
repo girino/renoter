@@ -136,7 +136,7 @@ func TestWrapEvent_ReverseOrder(t *testing.T) {
 	}
 }
 
-func TestPadEventToPowerOf2(t *testing.T) {
+func TestPadEventToMultipleOf32(t *testing.T) {
 	// Create a test event
 	testEvent := &nostr.Event{
 		Kind:      1,
@@ -147,24 +147,24 @@ func TestPadEventToPowerOf2(t *testing.T) {
 	testEvent.Sign(testEvent.PubKey)
 
 	// Test padding
-	padded, err := padEventToPowerOf2(testEvent)
+	padded, err := padEventToMultipleOf32(testEvent)
 	if err != nil {
-		t.Fatalf("padEventToPowerOf2() error = %v", err)
+		t.Fatalf("padEventToMultipleOf32() error = %v", err)
 	}
 
 	if padded == nil {
-		t.Fatal("padEventToPowerOf2() returned nil")
+		t.Fatal("padEventToMultipleOf32() returned nil")
 	}
 
-	// Verify padded event size is power of 2
+	// Verify padded event size is multiple of 32
 	paddedJSON, err := json.Marshal(padded)
 	if err != nil {
 		t.Fatalf("Failed to serialize padded event: %v", err)
 	}
 
 	size := len(paddedJSON)
-	if !isPowerOf2(size) {
-		t.Errorf("Padded event size %d is not a power of 2", size)
+	if size%32 != 0 {
+		t.Errorf("Padded event size %d is not a multiple of 32", size)
 	}
 
 	// Verify padding tags are present
@@ -175,50 +175,39 @@ func TestPadEventToPowerOf2(t *testing.T) {
 			break
 		}
 	}
-	if !hasPadding && isPowerOf2(size) {
-		// Only check for padding tag if size changed (might already be power of 2)
-		t.Log("Event may have already been power of 2, no padding needed")
+	if !hasPadding && size%32 == 0 {
+		// Only check for padding tag if size changed (might already be multiple of 32)
+		t.Log("Event may have already been multiple of 32, no padding needed")
 	}
 }
 
-func isPowerOf2(n int) bool {
-	if n <= 0 {
-		return false
-	}
-	return (n & (n - 1)) == 0
-}
-
-func TestNextPowerOf2(t *testing.T) {
+func TestNextMultipleOf32(t *testing.T) {
 	tests := []struct {
 		name string
 		n    int
 		want int
 	}{
-		{"n=1", 1, 1},
-		{"n=2", 2, 2},
-		{"n=3", 3, 4},
-		{"n=4", 4, 4},
-		{"n=5", 5, 8},
+		{"n=1", 1, 32},
+		{"n=31", 31, 32},
 		{"n=32", 32, 32},
 		{"n=33", 33, 64},
 		{"n=64", 64, 64},
-		{"n=65", 65, 128},
+		{"n=65", 65, 96},
 		{"n=100", 100, 128},
 		{"n=128", 128, 128},
-		{"n=129", 129, 256},
-		{"n=0", 0, 1},
-		{"n=-1", -1, 1},
+		{"n=129", 129, 160},
+		{"n=0", 0, 32},
+		{"n=-1", -1, 32},
 		{"n=1024", 1024, 1024},
-		{"n=1025", 1025, 2048},
+		{"n=1025", 1025, 1056},
 		{"n=32768", 32768, 32768},
-		{"n=32769", 32769, 65536}, // This should exceed MaxWrappedEventSize in padding function
+		{"n=32769", 32769, 32800},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := nextPowerOf2(tt.n); got != tt.want {
-				t.Errorf("nextPowerOf2() = %v, want %v", got, tt.want)
+			if got := nextMultipleOf32(tt.n); got != tt.want {
+				t.Errorf("nextMultipleOf32() = %v, want %v", got, tt.want)
 			}
 		})
 	}
 }
-
