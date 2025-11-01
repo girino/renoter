@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"testing"
 	"time"
 )
@@ -76,20 +77,13 @@ func TestEventCache_CleanupOldEvents(t *testing.T) {
 	// The cleanup happens during CheckAndMark, so old events are removed
 	cache.CheckAndMark("new1", now)
 
-	// Verify old events were cleaned up by checking cache size
-	// After cleanup, old1 and old2 should be removed, leaving only new1
-	// But note: cleanup uses binary search which assumes events are ordered by timestamp
-	// If events have the same timestamp, binary search should still work
-	size := cache.Size()
-	
-	// The size should be <= 3 (old1, old2 might still be there, plus new1)
-	// Actually, cleanup removes events older than cutoff, so old1 and old2 should be gone
-	// Let's verify old events are not detected as replays (they were cleaned up)
+	// Verify old events were cleaned up - they should NOT be detected as replays
+	// because they were removed during cleanup
 	if cache.CheckAndMark("old1", now) {
-		// If old1 is detected as replay, it wasn't cleaned up - check if it's within cutoff
-		// Actually wait - if cleanup didn't work, old1 would still be in cache
-		// But since it's older than cutoff, it should be removed
-		// Let's just verify the behavior: old events should not be in cache after cleanup
+		t.Error("Old event 'old1' should have been cleaned up")
+	}
+	if cache.CheckAndMark("old2", now) {
+		t.Error("Old event 'old2' should have been cleaned up")
 	}
 	
 	// Verify new event is in cache (replay detected)
