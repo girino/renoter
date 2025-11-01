@@ -115,14 +115,16 @@ func WrapEvent(originalEvent *nostr.Event, renterPath [][]byte) (*nostr.Event, e
 
 		logging.DebugMethod("client.wrapper", "WrapEvent", "Wrapping layer %d/%d for Renoter pubkey: %s (first 16 chars: %s)", len(renterPath)-i, len(renterPath), renoterPubkey, renoterPubkey[:16])
 
-		// Pad event to multiple of 64 bytes before encrypting
-		logging.DebugMethod("client.wrapper", "WrapEvent", "Padding event to multiple of 64 bytes (layer %d)", i)
+		// Pad the inner event to multiple of 64 bytes before encrypting
+		// Note: For the inner event, we pad before encryption.
+		// For the wrapper event itself, we pad after creation but before signing (see below).
+		logging.DebugMethod("client.wrapper", "WrapEvent", "Padding inner event to multiple of 64 bytes (layer %d)", i)
 		paddedEvent, err := padEventToMultipleOf64(currentEvent)
 		if err != nil {
-			logging.Error("client.wrapper.WrapEvent: failed to pad event at layer %d: %v", i, err)
-			return nil, fmt.Errorf("failed to pad event: %w", err)
+			logging.Error("client.wrapper.WrapEvent: failed to pad inner event at layer %d: %v", i, err)
+			return nil, fmt.Errorf("failed to pad inner event: %w", err)
 		}
-		logging.DebugMethod("client.wrapper", "WrapEvent", "Event padded to multiple of 64 bytes (layer %d)", i)
+		logging.DebugMethod("client.wrapper", "WrapEvent", "Inner event padded to multiple of 64 bytes (layer %d)", i)
 
 		// Serialize padded event to JSON
 		logging.DebugMethod("client.wrapper", "WrapEvent", "Serializing padded event to JSON (layer %d)", i)
@@ -177,7 +179,17 @@ func WrapEvent(originalEvent *nostr.Event, renterPath [][]byte) (*nostr.Event, e
 
 		logging.DebugMethod("client.wrapper", "WrapEvent", "Created wrapper event structure (layer %d)", i)
 
-		// Sign the wrapper event
+		// Pad the wrapper event before signing (ID must be computed after padding)
+		logging.DebugMethod("client.wrapper", "WrapEvent", "Padding wrapper event before signing (layer %d)", i)
+		paddedWrapperEvent, err := padEventToMultipleOf64(wrapperEvent)
+		if err != nil {
+			logging.Error("client.wrapper.WrapEvent: failed to pad wrapper event at layer %d: %v", i, err)
+			return nil, fmt.Errorf("failed to pad wrapper event: %w", err)
+		}
+		wrapperEvent = paddedWrapperEvent
+		logging.DebugMethod("client.wrapper", "WrapEvent", "Wrapper event padded to multiple of 64 bytes (layer %d)", i)
+
+		// Sign the wrapper event (this will compute the ID based on the padded event)
 		err = wrapperEvent.Sign(sk)
 		if err != nil {
 			logging.Error("client.wrapper.WrapEvent: failed to sign wrapper event at layer %d: %v", i, err)
