@@ -7,9 +7,10 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"renoter/pkg/client"
 	"strings"
 	"syscall"
-	"renoter/pkg/client"
+
 	"github.com/fiatjaf/khatru"
 	"github.com/girino/nostr-lib/logging"
 )
@@ -19,11 +20,11 @@ func main() {
 	logging.SetVerbose(os.Getenv("VERBOSE"))
 
 	var (
-		listenAddr    = flag.String("listen", ":8080", "Address and port to listen on (e.g., :8080)")
-		path          = flag.String("path", "", "Comma-separated list of Renoter npubs (e.g., npub1...,npub2...)")
-		serverRelay   = flag.String("server-relay", "", "Relay URL where wrapped events will be sent (e.g., wss://relay.example.com)")
-		configFile    = flag.String("config", "", "Path to config file (not implemented yet)")
-		verbose       = flag.String("verbose", "", "Verbose logging (true/all, or comma-separated module.method filters)")
+		listenAddr   = flag.String("listen", ":8080", "Address and port to listen on (e.g., :8080)")
+		path         = flag.String("path", "", "Comma-separated list of Renoter npubs (e.g., npub1...,npub2...)")
+		serverRelays = flag.String("server-relays", "", "Comma-separated relay URLs where wrapped events will be sent (e.g., wss://relay1.com,wss://relay2.com)")
+		configFile   = flag.String("config", "", "Path to config file (not implemented yet)")
+		verbose      = flag.String("verbose", "", "Verbose logging (true/all, or comma-separated module.method filters)")
 	)
 	flag.Parse()
 
@@ -35,8 +36,8 @@ func main() {
 	if *path == "" {
 		log.Fatal("Error: -path is required (comma-separated npubs)")
 	}
-	if *serverRelay == "" {
-		log.Fatal("Error: -server-relay is required (relay URL for wrapped events)")
+	if *serverRelays == "" {
+		log.Fatal("Error: -server-relays is required (comma-separated relay URLs for wrapped events)")
 	}
 
 	// Ignore config file for now (future enhancement)
@@ -58,11 +59,22 @@ func main() {
 
 	log.Printf("Validated Renoter path with %d nodes", len(renterPath))
 
+	// Parse server relay URLs
+	serverRelayList := strings.Split(*serverRelays, ",")
+	for i := range serverRelayList {
+		serverRelayList[i] = strings.TrimSpace(serverRelayList[i])
+		if serverRelayList[i] == "" {
+			log.Fatalf("Error: empty relay URL at index %d", i)
+		}
+	}
+
+	log.Printf("Using %d server relays: %v", len(serverRelayList), serverRelayList)
+
 	// Create khatru relay
 	relay := khatru.NewRelay()
 
 	// Setup relay to intercept and wrap events
-	err = client.SetupRelay(relay, renterPath, *serverRelay)
+	err = client.SetupRelay(relay, renterPath, serverRelayList)
 	if err != nil {
 		log.Fatalf("Error: failed to setup relay: %v", err)
 	}
@@ -104,11 +116,10 @@ func main() {
 
 	// Start server
 	log.Printf("Starting Renoter client on %s:%d", host, port)
-	log.Printf("Wrapping events and forwarding to %s", *serverRelay)
+	log.Printf("Wrapping events and forwarding to %d relays", len(serverRelayList))
 	log.Println("Press Ctrl+C to stop")
 
 	if err := relay.Start(host, port); err != nil {
 		log.Fatalf("Error: failed to start server: %v", err)
 	}
 }
-

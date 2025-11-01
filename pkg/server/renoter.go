@@ -21,18 +21,23 @@ type Renoter struct {
 	eventStore map[string]bool
 	eventMu    sync.RWMutex
 
-	// Relay connection for forwarding events
-	forwardRelay *nostr.Relay
-	forwardURL   string
+	// SimplePool for managing multiple relay connections (used for both listening and forwarding)
+	pool        *nostr.SimplePool
+	relayURLs   []string
 }
 
-// NewRenoter creates a new Renoter instance.
-func NewRenoter(privateKey string, forwardRelayURL string) (*Renoter, error) {
-	logging.DebugMethod("server.renoter", "NewRenoter", "Creating new Renoter instance, forward relay: %s", forwardRelayURL)
+// NewRenoter creates a new Renoter instance with a SimplePool for multiple relay connections.
+func NewRenoter(ctx context.Context, privateKey string, relayURLs []string) (*Renoter, error) {
+	logging.DebugMethod("server.renoter", "NewRenoter", "Creating new Renoter instance with %d relays", len(relayURLs))
 
 	if privateKey == "" {
 		logging.Error("server.renoter.NewRenoter: private key cannot be empty")
 		return nil, fmt.Errorf("private key cannot be empty")
+	}
+
+	if len(relayURLs) == 0 {
+		logging.Error("server.renoter.NewRenoter: relay URLs cannot be empty")
+		return nil, fmt.Errorf("relay URLs cannot be empty")
 	}
 
 	logging.DebugMethod("server.renoter", "NewRenoter", "Deriving public key from private key")
@@ -42,34 +47,38 @@ func NewRenoter(privateKey string, forwardRelayURL string) (*Renoter, error) {
 		return nil, fmt.Errorf("failed to get public key: %w", err)
 	}
 
-	logging.Info("server.renoter.NewRenoter: Created Renoter instance, pubkey: %s (first 16 chars), forward relay: %s", pubkey[:16], forwardRelayURL)
+	// Create SimplePool for managing relay connections
+	pool := nostr.NewSimplePool(ctx)
+	logging.DebugMethod("server.renoter", "NewRenoter", "Created SimplePool for %d relays", len(relayURLs))
+
+	// Ensure all relays are available in the pool (they'll be connected on-demand)
+	for _, url := range relayURLs {
+		_, err := pool.EnsureRelay(url)
+		if err != nil {
+			logging.Error("server.renoter.NewRenoter: failed to ensure relay %s in pool: %v", url, err)
+			return nil, fmt.Errorf("failed to ensure relay %s: %w", url, err)
+		}
+	}
+
+	logging.Info("server.renoter.NewRenoter: Created Renoter instance, pubkey: %s (first 16 chars), %d relays", pubkey[:16], len(relayURLs))
 
 	return &Renoter{
-		PrivateKey:   privateKey,
-		PublicKey:    pubkey,
-		eventStore:   make(map[string]bool),
-		forwardURL:   forwardRelayURL,
-		forwardRelay: nil, // Will be connected when needed
+		PrivateKey: privateKey,
+		PublicKey:  pubkey,
+		eventStore: make(map[string]bool),
+		pool:       pool,
+		relayURLs:  relayURLs,
 	}, nil
 }
 
-// ConnectForwardRelay connects to the forward relay.
-func (r *Renoter) ConnectForwardRelay(ctx context.Context) error {
-	if r.forwardRelay != nil {
-		logging.DebugMethod("server.renoter", "ConnectForwardRelay", "Forward relay already connected")
-		return nil // Already connected
-	}
+// GetPool returns the SimplePool used by this Renoter.
+func (r *Renoter) GetPool() *nostr.SimplePool {
+	return r.pool
+}
 
-	logging.DebugMethod("server.renoter", "ConnectForwardRelay", "Connecting to forward relay: %s", r.forwardURL)
-	relay, err := nostr.RelayConnect(ctx, r.forwardURL)
-	if err != nil {
-		logging.Error("server.renoter.ConnectForwardRelay: failed to connect to forward relay %s: %v", r.forwardURL, err)
-		return fmt.Errorf("failed to connect to forward relay: %w", err)
-	}
-
-	r.forwardRelay = relay
-	logging.Info("server.renoter.ConnectForwardRelay: Successfully connected to forward relay: %s", r.forwardURL)
-	return nil
+// GetRelayURLs returns the list of relay URLs used by this Renoter.
+func (r *Renoter) GetRelayURLs() []string {
+	return r.relayURLs
 }
 
 // ProcessEvent processes a wrapped event by verifying signature,

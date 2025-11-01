@@ -1,6 +1,7 @@
 package client
 
 import (
+	"encoding/hex"
 	"fmt"
 	"github.com/girino/nostr-lib/logging"
 	"github.com/nbd-wtf/go-nostr/nip19"
@@ -36,10 +37,23 @@ func ValidatePath(npubs []string) ([][]byte, error) {
 			return nil, fmt.Errorf("npub at index %d is not a valid npub (prefix: %s)", i, prefix)
 		}
 
-		pubkey, ok := data.([]byte)
+		// nip19.Decode returns npub as a hex-encoded string, not []byte
+		pubkeyHex, ok := data.(string)
 		if !ok {
-			logging.Error("client.path.ValidatePath: npub at index %d decoded to unexpected type", i)
+			logging.Error("client.path.ValidatePath: npub at index %d decoded to unexpected type (expected string, got %T)", i, data)
 			return nil, fmt.Errorf("npub at index %d decoded to unexpected type", i)
+		}
+
+		// Decode hex string to bytes
+		displayLen := 32
+		if len(pubkeyHex) < displayLen {
+			displayLen = len(pubkeyHex)
+		}
+		logging.DebugMethod("client.path", "ValidatePath", "Decoding hex pubkey: %s (first %d chars)", pubkeyHex[:displayLen], displayLen)
+		pubkey, err := hex.DecodeString(pubkeyHex)
+		if err != nil {
+			logging.Error("client.path.ValidatePath: failed to decode hex pubkey at index %d: %v", i, err)
+			return nil, fmt.Errorf("npub at index %d has invalid hex encoding: %w", i, err)
 		}
 
 		if len(pubkey) != 32 {

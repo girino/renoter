@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"renoter/pkg/server"
 	"github.com/girino/nostr-lib/logging"
@@ -18,11 +19,10 @@ func main() {
 	logging.SetVerbose(os.Getenv("VERBOSE"))
 
 	var (
-		privateKey   = flag.String("private-key", "", "Private key in hex format (or leave empty to generate new)")
-		listenRelay  = flag.String("listen-relay", "", "Relay URL to listen for wrapped events (e.g., wss://relay.example.com)")
-		forwardRelay = flag.String("forward-relay", "", "Relay URL to forward decrypted events (e.g., wss://relay.example.com)")
-		configFile   = flag.String("config", "", "Path to config file (not implemented yet)")
-		verbose      = flag.String("verbose", "", "Verbose logging (true/all, or comma-separated module.method filters)")
+		privateKey = flag.String("private-key", "", "Private key in hex format (or leave empty to generate new)")
+		relays     = flag.String("relays", "", "Comma-separated relay URLs for listening and forwarding (e.g., wss://relay1.com,wss://relay2.com)")
+		configFile = flag.String("config", "", "Path to config file (not implemented yet)")
+		verbose    = flag.String("verbose", "", "Verbose logging (true/all, or comma-separated module.method filters)")
 	)
 	flag.Parse()
 
@@ -31,11 +31,8 @@ func main() {
 		logging.SetVerbose(*verbose)
 	}
 
-	if *listenRelay == "" {
-		log.Fatal("Error: -listen-relay is required")
-	}
-	if *forwardRelay == "" {
-		log.Fatal("Error: -forward-relay is required")
+	if *relays == "" {
+		log.Fatal("Error: -relays is required (comma-separated relay URLs)")
 	}
 
 	// Ignore config file for now (future enhancement)
@@ -66,15 +63,26 @@ func main() {
 
 	log.Printf("Renoter public key (npub): %s", npub)
 
-	// Create Renoter instance
-	renoter, err := server.NewRenoter(sk, *forwardRelay)
-	if err != nil {
-		log.Fatalf("Error: failed to create Renoter: %v", err)
+	// Parse relay URLs
+	relayList := strings.Split(*relays, ",")
+	for i := range relayList {
+		relayList[i] = strings.TrimSpace(relayList[i])
+		if relayList[i] == "" {
+			log.Fatalf("Error: empty relay URL at index %d", i)
+		}
 	}
+
+	log.Printf("Using %d relays: %v", len(relayList), relayList)
 
 	// Create context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	// Create Renoter instance with SimplePool
+	renoter, err := server.NewRenoter(ctx, sk, relayList)
+	if err != nil {
+		log.Fatalf("Error: failed to create Renoter: %v", err)
+	}
 
 	// Setup signal handling
 	sigChan := make(chan os.Signal, 1)
@@ -87,12 +95,11 @@ func main() {
 		os.Exit(0)
 	}()
 
-	// Subscribe to wrapped events
-	log.Printf("Connecting to listen relay: %s", *listenRelay)
-	log.Printf("Will forward to relay: %s", *forwardRelay)
+	// Subscribe to wrapped events on all relays
+	log.Printf("Subscribing to %d relays for wrapped events", len(relayList))
 	log.Println("Press Ctrl+C to stop")
 
-	err = renoter.SubscribeToWrappedEvents(ctx, *listenRelay)
+	err = renoter.SubscribeToWrappedEvents(ctx)
 	if err != nil {
 		log.Fatalf("Error: failed to subscribe to wrapped events: %v", err)
 	}

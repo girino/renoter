@@ -12,9 +12,11 @@ Renoter implements nested onion-routing encryption for Nostr events:
 ## Features
 
 - Nested encryption using NIP-44 (one layer per Renoter in the path)
-- No routing tags needed - encryption handles routing automatically
+- Multi-relay support using `nostr.SimplePool` for redundancy and reliability
+- Routing via "p" tags for efficient filtering
 - Ephemeral event kinds (29000) for non-persistence
 - Automatic path validation
+- Extensive debug logging with granular control
 
 ## Building
 
@@ -23,21 +25,54 @@ go build -o renoter-client ./cmd/client
 go build -o renoter-server ./cmd/server
 ```
 
+## Quick Start (Testing)
+
+For easier testing, use the `run.sh` script to start both client and server from a `.env` file:
+
+1. Copy the example environment file:
+```bash
+cp .env.example .env
+```
+
+2. Edit `.env` and set your configuration:
+```bash
+# Required
+RENOTER_RELAYS=wss://relay1.com,wss://relay2.com
+RENOTER_PATH=npub1...,npub2...
+CLIENT_SERVER_RELAYS=wss://relay1.com,wss://relay2.com
+
+# Optional
+CLIENT_LISTEN=:8080
+VERBOSE=
+```
+
+3. Run both client and server:
+```bash
+./run.sh
+```
+
+The script will:
+- Build binaries if they don't exist
+- Start the server in the background
+- Start the client in the background
+- Wait for Ctrl+C and cleanly kill both processes
+- Write logs to `server.log` and `client.log`
+
 ## Usage
 
 ### Running a Renoter Server
 
 ```bash
-# Generate a new identity
+# Generate a new identity (uses same relay list for listening and forwarding)
 renoter-server -private-key="$(openssl rand -hex 32)" \
-  -listen-relay="wss://your-relay.com" \
-  -forward-relay="wss://next-relay.com"
+  -relays="wss://relay1.com,wss://relay2.com,wss://relay3.com"
 
 # Or load existing private key
 renoter-server -private-key="your-private-key-hex" \
-  -listen-relay="wss://your-relay.com" \
-  -forward-relay="wss://next-relay.com"
+  -relays="wss://relay1.com,wss://relay2.com"
 ```
+
+The server uses the same list of relays for both listening and forwarding, managed by `nostr.SimplePool`.
 
 ### Running the Client
 
@@ -45,10 +80,27 @@ renoter-server -private-key="your-private-key-hex" \
 renoter-client \
   -listen=":8080" \
   -path="npub1...,npub2...,npub3..." \
-  -server-relay="wss://first-renoter-relay.com"
+  -server-relays="wss://relay1.com,wss://relay2.com"
 ```
 
-The client runs a Nostr relay on the specified address/port. Connect your Nostr client to it, and events will be automatically wrapped and forwarded through the Renoter path.
+You can specify multiple server relays for redundancy - events will be published to all of them.
+
+The client runs a Nostr relay on the specified address/port. Connect your Nostr client to it, and events will be automatically wrapped and forwarded through the Renoter path to all specified server relays.
+
+### Debug Logging
+
+Enable verbose logging to see detailed information about event processing:
+
+```bash
+# Enable all debug logging
+VERBOSE=1 ./renoter-client ...
+
+# Enable specific modules only
+VERBOSE=client.wrapper,server.handler ./renoter-server ...
+
+# Or use command-line flag
+./renoter-client -verbose=true ...
+```
 
 ## How It Works
 

@@ -64,35 +64,34 @@ func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
 		logging.Info("server.handler.HandleEvent: Inner event is final event (kind %d), will forward to network", innerEvent.Kind)
 	}
 
-	// Ensure forward relay is connected
-	err = r.ConnectForwardRelay(ctx)
-	if err != nil {
-		logging.Error("server.handler.HandleEvent: failed to connect to forward relay: %v", err)
-		return fmt.Errorf("failed to connect to forward relay: %w", err)
+	// Publish inner event to all relays using SimplePool
+	relayURLs := r.GetRelayURLs()
+	logging.DebugMethod("server.handler", "HandleEvent", "Publishing inner event %s to %d relays", innerEvent.ID, len(relayURLs))
+	publishResults := r.GetPool().PublishMany(ctx, relayURLs, innerEvent)
+	
+	// Collect results
+	successCount := 0
+	for result := range publishResults {
+		if result.Error != nil {
+			logging.Error("server.handler.HandleEvent: failed to publish inner event %s to relay %s: %v", innerEvent.ID, result.RelayURL, result.Error)
+		} else {
+			successCount++
+			logging.DebugMethod("server.handler", "HandleEvent", "Successfully published inner event %s to relay %s", innerEvent.ID, result.RelayURL)
+		}
+	}
+	
+	if successCount == 0 {
+		return fmt.Errorf("failed to publish inner event %s to any relay", innerEvent.ID)
 	}
 
-	// Publish inner event to forward relay
-	logging.DebugMethod("server.handler", "HandleEvent", "Publishing inner event %s to forward relay", innerEvent.ID)
-	err = r.forwardRelay.Publish(ctx, innerEvent)
-	if err != nil {
-		logging.Error("server.handler.HandleEvent: failed to publish inner event %s: %v", innerEvent.ID, err)
-		return fmt.Errorf("failed to publish inner event: %w", err)
-	}
-
-	logging.Info("server.handler.HandleEvent: Successfully processed and forwarded event %s -> inner event %s (kind %d)", event.ID, innerEvent.ID, innerEvent.Kind)
+	logging.Info("server.handler.HandleEvent: Successfully processed and forwarded event %s -> inner event %s (kind %d) to %d/%d relays", event.ID, innerEvent.ID, innerEvent.Kind, successCount, len(relayURLs))
 	return nil
 }
 
-// SubscribeToWrappedEvents subscribes to wrapper events (kind 29000) on the listen relay.
-func (r *Renoter) SubscribeToWrappedEvents(ctx context.Context, listenRelayURL string) error {
-	logging.Info("server.handler.SubscribeToWrappedEvents: Connecting to listen relay: %s", listenRelayURL)
-
-	relay, err := nostr.RelayConnect(ctx, listenRelayURL)
-	if err != nil {
-		logging.Error("server.handler.SubscribeToWrappedEvents: failed to connect to listen relay %s: %v", listenRelayURL, err)
-		return fmt.Errorf("failed to connect to listen relay: %w", err)
-	}
-	logging.Info("server.handler.SubscribeToWrappedEvents: Successfully connected to listen relay: %s", listenRelayURL)
+// SubscribeToWrappedEvents subscribes to wrapper events (kind 29000) on multiple relays.
+func (r *Renoter) SubscribeToWrappedEvents(ctx context.Context) error {
+	relayURLs := r.GetRelayURLs()
+	logging.Info("server.handler.SubscribeToWrappedEvents: Subscribing to %d relays: %v", len(relayURLs), relayURLs)
 
 	// Create filter for wrapper events addressed to this Renoter
 	// Filter by events with kind 29000 that have our pubkey in a "p" tag
@@ -105,14 +104,11 @@ func (r *Renoter) SubscribeToWrappedEvents(ctx context.Context, listenRelayURL s
 
 	logging.DebugMethod("server.handler", "SubscribeToWrappedEvents", "Creating subscription filter: kind=29000, p tag=%s (first 16 chars)", r.PublicKey[:16])
 
-	sub, err := relay.Subscribe(ctx, []nostr.Filter{filter})
-	if err != nil {
-		logging.Error("server.handler.SubscribeToWrappedEvents: failed to subscribe: %v", err)
-		return fmt.Errorf("failed to subscribe: %w", err)
-	}
-	logging.Info("server.handler.SubscribeToWrappedEvents: Successfully subscribed to wrapper events (kind 29000) with our pubkey in 'p' tag")
+	// Subscribe to all relays using SimplePool
+	events := r.GetPool().SubscribeMany(ctx, relayURLs, filter)
+	logging.Info("server.handler.SubscribeToWrappedEvents: Successfully subscribed to wrapper events (kind 29000) with our pubkey in 'p' tag on %d relays", len(relayURLs))
 
-	// Handle incoming events
+	// Handle incoming events from all relays
 	go func() {
 		logging.Info("server.handler.SubscribeToWrappedEvents: Started event processing goroutine")
 		for {
@@ -120,8 +116,15 @@ func (r *Renoter) SubscribeToWrappedEvents(ctx context.Context, listenRelayURL s
 			case <-ctx.Done():
 				logging.Info("server.handler.SubscribeToWrappedEvents: Context cancelled, stopping event processing")
 				return
-			case ev := <-sub.Events:
-				logging.DebugMethod("server.handler", "SubscribeToWrappedEvents", "Received wrapper event: ID=%s", ev.ID)
+			case relayEvent, ok := <-events:
+				if !ok {
+					logging.Info("server.handler.SubscribeToWrappedEvents: Event channel closed, stopping")
+					return
+				}
+				
+				ev := relayEvent.Event
+				logging.DebugMethod("server.handler", "SubscribeToWrappedEvents", "Received wrapper event: ID=%s from relay %s", ev.ID, relayEvent.Relay.URL)
+				
 				// Process the event
 				err := r.ProcessEvent(ctx, ev)
 				if err != nil {
@@ -138,9 +141,6 @@ func (r *Renoter) SubscribeToWrappedEvents(ctx context.Context, listenRelayURL s
 				}
 
 				logging.Info("server.handler.SubscribeToWrappedEvents: Successfully processed and forwarded event %s", ev.ID)
-			case <-sub.EndOfStoredEvents:
-				logging.DebugMethod("server.handler", "SubscribeToWrappedEvents", "End of stored events, continuing to listen for new ones")
-				// End of stored events, continue listening for new ones
 			}
 		}
 	}()

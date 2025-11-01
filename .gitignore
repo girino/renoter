@@ -1,0 +1,16 @@
+# Binaries
+renoter-client
+renoter-server
+client
+server
+*.log
+
+# Environment files
+.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
