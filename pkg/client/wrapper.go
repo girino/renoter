@@ -121,10 +121,8 @@ func WrapEvent(originalEvent *nostr.Event, renterPath [][]byte) (*nostr.Event, e
 		// Don't pad inner events - they may already be signed, and padding would invalidate the signature.
 		// We only pad wrapper events (which we create and sign ourselves after padding).
 		// Serialize the inner event as-is for encryption
-
-		// Serialize padded event to JSON (with correct ID)
-		logging.DebugMethod("client.wrapper", "WrapEvent", "Serializing padded event to JSON (layer %d)", i)
-		eventJSON, err := json.Marshal(paddedEvent)
+		logging.DebugMethod("client.wrapper", "WrapEvent", "Serializing inner event to JSON (layer %d)", i)
+		eventJSON, err := json.Marshal(currentEvent)
 		if err != nil {
 			logging.Error("client.wrapper.WrapEvent: failed to serialize event at layer %d: %v", i, err)
 			return nil, fmt.Errorf("failed to serialize event: %w", err)
