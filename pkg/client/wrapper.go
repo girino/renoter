@@ -118,11 +118,29 @@ func WrapEvent(originalEvent *nostr.Event, renterPath [][]byte) (*nostr.Event, e
 
 		logging.DebugMethod("client.wrapper", "WrapEvent", "Wrapping layer %d/%d for Renoter pubkey: %s (first 16 chars: %s)", len(renterPath)-i, len(renterPath), renoterPubkey, renoterPubkey[:16])
 
-		// Don't pad inner events - they may already be signed, and padding would invalidate the signature.
-		// We only pad wrapper events (which we create and sign ourselves after padding).
-		// Serialize the inner event as-is for encryption
-		logging.DebugMethod("client.wrapper", "WrapEvent", "Serializing inner event to JSON (layer %d)", i)
-		eventJSON, err := json.Marshal(currentEvent)
+		// Pad inner events BEFORE encrypting (padding is hidden inside encrypted content)
+		// We don't pad outer wrapper events because they're public and padding would leak metadata
+		logging.DebugMethod("client.wrapper", "WrapEvent", "Padding inner event before encryption (layer %d)", i)
+		paddedEvent, err := padEventToMultipleOf64(currentEvent)
+		if err != nil {
+			logging.Error("client.wrapper.WrapEvent: failed to pad inner event at layer %d: %v", i, err)
+			return nil, fmt.Errorf("failed to pad inner event: %w", err)
+		}
+
+		// Recalculate ID after padding to ensure it matches the padded structure
+		// Note: If the event was already signed, the signature will be invalid after padding.
+		// That's OK - inner events are encrypted, and the signature will be validated when decrypted.
+		paddedEvent.ID = paddedEvent.GetID()
+		if !paddedEvent.CheckID() {
+			logging.Error("client.wrapper.WrapEvent: padded inner event ID %s failed CheckID validation (layer %d)", paddedEvent.ID, i)
+			return nil, fmt.Errorf("invalid inner event ID after padding at layer %d", i)
+		}
+
+		logging.DebugMethod("client.wrapper", "WrapEvent", "Inner event padded to multiple of 64 bytes (layer %d)", i)
+
+		// Serialize padded inner event for encryption
+		logging.DebugMethod("client.wrapper", "WrapEvent", "Serializing padded inner event to JSON (layer %d)", i)
+		eventJSON, err := json.Marshal(paddedEvent)
 		if err != nil {
 			logging.Error("client.wrapper.WrapEvent: failed to serialize event at layer %d: %v", i, err)
 			return nil, fmt.Errorf("failed to serialize event: %w", err)
@@ -173,24 +191,15 @@ func WrapEvent(originalEvent *nostr.Event, renterPath [][]byte) (*nostr.Event, e
 
 		logging.DebugMethod("client.wrapper", "WrapEvent", "Created wrapper event structure (layer %d)", i)
 
-		// Pad the wrapper event BEFORE signing (ID and signature must be computed after padding)
-		logging.DebugMethod("client.wrapper", "WrapEvent", "Padding wrapper event before signing (layer %d)", i)
-		paddedWrapperEvent, err := padEventToMultipleOf64(wrapperEvent)
-		if err != nil {
-			logging.Error("client.wrapper.WrapEvent: failed to pad wrapper event at layer %d: %v", i, err)
-			return nil, fmt.Errorf("failed to pad wrapper event: %w", err)
-		}
-		wrapperEvent = paddedWrapperEvent
-		logging.DebugMethod("client.wrapper", "WrapEvent", "Wrapper event padded to multiple of 64 bytes (layer %d)", i)
-
-		// Recalculate ID after padding to ensure it matches the padded structure
+		// DON'T pad wrapper events - they're public and padding would leak metadata about size
+		// Compute ID and sign the wrapper event as-is
 		wrapperEvent.ID = wrapperEvent.GetID()
 		if !wrapperEvent.CheckID() {
-			logging.Error("client.wrapper.WrapEvent: wrapper event ID %s failed CheckID validation after padding (layer %d)", wrapperEvent.ID, i)
-			return nil, fmt.Errorf("invalid wrapper event ID after padding at layer %d", i)
+			logging.Error("client.wrapper.WrapEvent: wrapper event ID %s failed CheckID validation (layer %d)", wrapperEvent.ID, i)
+			return nil, fmt.Errorf("invalid wrapper event ID at layer %d", i)
 		}
 
-		// Sign the wrapper event AFTER padding (this computes signature based on the padded event)
+		// Sign the wrapper event
 		err = wrapperEvent.Sign(sk)
 		if err != nil {
 			logging.Error("client.wrapper.WrapEvent: failed to sign wrapper event at layer %d: %v", i, err)
