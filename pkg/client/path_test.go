@@ -1,7 +1,6 @@
 package client
 
 import (
-	"encoding/hex"
 	"testing"
 
 	"github.com/nbd-wtf/go-nostr"

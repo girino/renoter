@@ -68,35 +68,22 @@ func ValidatePath(npubs []string) ([][]byte, error) {
 		logging.DebugMethod("client.path", "ValidatePath", "Successfully validated npub %d", i)
 	}
 
-	// Deduplicate public keys to ensure each Renoter appears only once in the path
+	// Check for duplicate Renoters in the path
 	// This prevents routing loops and ensures proper anonymization
-	seen := make(map[string]bool)
-	deduplicated := make([][]byte, 0, len(publicKeys))
-	dedupCount := 0
+	seen := make(map[string]int) // Map pubkey hex to first occurrence index
 
-	for _, pubkey := range publicKeys {
+	for i, pubkey := range publicKeys {
 		pubkeyHex := hex.EncodeToString(pubkey)
-		if !seen[pubkeyHex] {
-			seen[pubkeyHex] = true
-			deduplicated = append(deduplicated, pubkey)
-		} else {
-			dedupCount++
-			logging.Warn("client.path.ValidatePath: Duplicate Renoter pubkey detected and removed: %s (first 16 chars)", pubkeyHex[:16])
+		if firstIndex, exists := seen[pubkeyHex]; exists {
+			// Found duplicate - return error
+			logging.Error("client.path.ValidatePath: Duplicate Renoter pubkey detected at index %d (duplicates index %d): %s (first 16 chars)", i, firstIndex, pubkeyHex[:16])
+			return nil, fmt.Errorf("duplicate Renoters in path: npub at index %d duplicates npub at index %d (pubkey: %s...)", i, firstIndex, pubkeyHex[:16])
 		}
+		seen[pubkeyHex] = i
 	}
 
-	if dedupCount > 0 {
-		logging.Info("client.path.ValidatePath: Removed %d duplicate Renoter(s), path now has %d unique Renoters", dedupCount, len(deduplicated))
-	} else {
-		logging.Info("client.path.ValidatePath: Successfully validated all %d npubs in Renoter path (no duplicates)", len(npubs))
-	}
-
-	if len(deduplicated) == 0 {
-		logging.Error("client.path.ValidatePath: After deduplication, path is empty")
-		return nil, fmt.Errorf("path is empty after deduplication")
-	}
-
-	return deduplicated, nil
+	logging.Info("client.path.ValidatePath: Successfully validated all %d npubs in Renoter path (no duplicates)", len(npubs))
+	return publicKeys, nil
 }
 
 // ShufflePath randomly shuffles the Renoter path to randomize routing order.
