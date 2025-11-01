@@ -173,7 +173,7 @@ func WrapEvent(originalEvent *nostr.Event, renterPath [][]byte) (*nostr.Event, e
 
 		logging.DebugMethod("client.wrapper", "WrapEvent", "Created wrapper event structure (layer %d)", i)
 
-		// Pad the wrapper event before signing (ID must be computed after padding)
+		// Pad the wrapper event BEFORE signing (ID and signature must be computed after padding)
 		logging.DebugMethod("client.wrapper", "WrapEvent", "Padding wrapper event before signing (layer %d)", i)
 		paddedWrapperEvent, err := padEventToMultipleOf64(wrapperEvent)
 		if err != nil {
@@ -183,7 +183,14 @@ func WrapEvent(originalEvent *nostr.Event, renterPath [][]byte) (*nostr.Event, e
 		wrapperEvent = paddedWrapperEvent
 		logging.DebugMethod("client.wrapper", "WrapEvent", "Wrapper event padded to multiple of 64 bytes (layer %d)", i)
 
-		// Sign the wrapper event (this will compute the ID based on the padded event)
+		// Recalculate ID after padding to ensure it matches the padded structure
+		wrapperEvent.ID = wrapperEvent.GetID()
+		if !wrapperEvent.CheckID() {
+			logging.Error("client.wrapper.WrapEvent: wrapper event ID %s failed CheckID validation after padding (layer %d)", wrapperEvent.ID, i)
+			return nil, fmt.Errorf("invalid wrapper event ID after padding at layer %d", i)
+		}
+
+		// Sign the wrapper event AFTER padding (this computes signature based on the padded event)
 		err = wrapperEvent.Sign(sk)
 		if err != nil {
 			logging.Error("client.wrapper.WrapEvent: failed to sign wrapper event at layer %d: %v", i, err)
