@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+
 	"github.com/girino/nostr-lib/logging"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip44"
@@ -66,22 +67,25 @@ func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
 
 	// Check if inner event was already published (replay protection for inner events)
 	// This prevents the same inner event from being published multiple times
+	// NOTE: We check this BEFORE publishing to prevent publishing the same inner event twice
 	r.eventMu.Lock()
 	innerAlreadyProcessed := r.eventStore[innerEvent.ID]
 	if innerAlreadyProcessed {
 		r.eventMu.Unlock()
-		logging.Warn("server.handler.HandleEvent: Inner event %s already published, skipping duplicate", innerEvent.ID)
+		logging.Warn("server.handler.HandleEvent: Inner event %s already published, skipping duplicate publish", innerEvent.ID)
 		return fmt.Errorf("inner event %s already published", innerEvent.ID)
 	}
+	// Mark inner event as published BEFORE actually publishing to prevent race conditions
+	// If the publish succeeds and we receive it back from a relay, it will be caught here
 	r.eventStore[innerEvent.ID] = true
 	r.eventMu.Unlock()
-	logging.DebugMethod("server.handler", "HandleEvent", "Marked inner event %s as published", innerEvent.ID)
+	logging.DebugMethod("server.handler", "HandleEvent", "Atomically checked and marked inner event %s as published", innerEvent.ID)
 
 	// Publish inner event to all relays using SimplePool
 	relayURLs := r.GetRelayURLs()
 	logging.DebugMethod("server.handler", "HandleEvent", "Publishing inner event %s to %d relays", innerEvent.ID, len(relayURLs))
 	publishResults := r.GetPool().PublishMany(ctx, relayURLs, innerEvent)
-	
+
 	// Collect results
 	successCount := 0
 	for result := range publishResults {
@@ -92,7 +96,7 @@ func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
 			logging.DebugMethod("server.handler", "HandleEvent", "Successfully published inner event %s to relay %s", innerEvent.ID, result.RelayURL)
 		}
 	}
-	
+
 	if successCount == 0 {
 		return fmt.Errorf("failed to publish inner event %s to any relay", innerEvent.ID)
 	}
@@ -134,10 +138,10 @@ func (r *Renoter) SubscribeToWrappedEvents(ctx context.Context) error {
 					logging.Info("server.handler.SubscribeToWrappedEvents: Event channel closed, stopping")
 					return
 				}
-				
+
 				ev := relayEvent.Event
 				logging.DebugMethod("server.handler", "SubscribeToWrappedEvents", "Received wrapper event: ID=%s from relay %s", ev.ID, relayEvent.Relay.URL)
-				
+
 				// Process the event
 				err := r.ProcessEvent(ctx, ev)
 				if err != nil {
@@ -160,4 +164,3 @@ func (r *Renoter) SubscribeToWrappedEvents(ctx context.Context) error {
 
 	return nil
 }
-
