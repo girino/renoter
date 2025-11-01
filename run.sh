@@ -77,12 +77,21 @@ fi
 CLIENT_LISTEN=${CLIENT_LISTEN:-":8080"}
 VERBOSE=${VERBOSE:-""}
 
-# Verify Go code compiles
-echo -e "${GREEN}Verifying Go code compiles...${NC}"
-if ! go build ./cmd/client ./cmd/server > /dev/null 2>&1; then
-    echo -e "${RED}Error: Go code does not compile. Fix errors before running.${NC}"
+# Clean and build executables
+echo -e "${GREEN}Cleaning previous builds...${NC}"
+go clean -i ./cmd/client ./cmd/server 2>/dev/null || true
+rm -f renoter-client renoter-server 2>/dev/null || true
+
+echo -e "${GREEN}Building executables...${NC}"
+if ! go build -o renoter-client ./cmd/client; then
+    echo -e "${RED}Error: Failed to build renoter-client${NC}"
     exit 1
 fi
+if ! go build -o renoter-server ./cmd/server; then
+    echo -e "${RED}Error: Failed to build renoter-server${NC}"
+    exit 1
+fi
+echo -e "${GREEN}Build successful${NC}"
 
 # Cleanup function to kill all processes
 cleanup() {
@@ -114,34 +123,34 @@ cleanup() {
 # Trap SIGINT and SIGTERM
 trap cleanup SIGINT SIGTERM
 
-# Start Renoter 1 using go run (always uses latest code)
-echo -e "${GREEN}Starting Renoter 1 (go run)...${NC}"
+# Start Renoter 1 using built executable
+echo -e "${GREEN}Starting Renoter 1...${NC}"
 if [ -z "$RENOTER_PRIVATE_KEY_1" ]; then
-    go run ./cmd/server -relays="$RENOTER_RELAYS" > server1.log 2>&1 &
+    ./renoter-server -relays="$RENOTER_RELAYS" > server1.log 2>&1 &
 else
-    go run ./cmd/server -private-key="$RENOTER_PRIVATE_KEY_1" -relays="$RENOTER_RELAYS" > server1.log 2>&1 &
+    ./renoter-server -private-key="$RENOTER_PRIVATE_KEY_1" -relays="$RENOTER_RELAYS" > server1.log 2>&1 &
 fi
 SERVER_PID_1=$!
 echo "Renoter 1 PID: $SERVER_PID_1"
 echo "Renoter 1 logs: server1.log"
 
 # Start Renoter 2
-echo -e "${GREEN}Starting Renoter 2 (go run)...${NC}"
+echo -e "${GREEN}Starting Renoter 2...${NC}"
 if [ -z "$RENOTER_PRIVATE_KEY_2" ]; then
-    go run ./cmd/server -relays="$RENOTER_RELAYS" > server2.log 2>&1 &
+    ./renoter-server -relays="$RENOTER_RELAYS" > server2.log 2>&1 &
 else
-    go run ./cmd/server -private-key="$RENOTER_PRIVATE_KEY_2" -relays="$RENOTER_RELAYS" > server2.log 2>&1 &
+    ./renoter-server -private-key="$RENOTER_PRIVATE_KEY_2" -relays="$RENOTER_RELAYS" > server2.log 2>&1 &
 fi
 SERVER_PID_2=$!
 echo "Renoter 2 PID: $SERVER_PID_2"
 echo "Renoter 2 logs: server2.log"
 
 # Start Renoter 3
-echo -e "${GREEN}Starting Renoter 3 (go run)...${NC}"
+echo -e "${GREEN}Starting Renoter 3...${NC}"
 if [ -z "$RENOTER_PRIVATE_KEY_3" ]; then
-    go run ./cmd/server -relays="$RENOTER_RELAYS" > server3.log 2>&1 &
+    ./renoter-server -relays="$RENOTER_RELAYS" > server3.log 2>&1 &
 else
-    go run ./cmd/server -private-key="$RENOTER_PRIVATE_KEY_3" -relays="$RENOTER_RELAYS" > server3.log 2>&1 &
+    ./renoter-server -private-key="$RENOTER_PRIVATE_KEY_3" -relays="$RENOTER_RELAYS" > server3.log 2>&1 &
 fi
 SERVER_PID_3=$!
 echo "Renoter 3 PID: $SERVER_PID_3"
@@ -167,12 +176,12 @@ if ! kill -0 $SERVER_PID_3 2>/dev/null; then
     exit 1
 fi
 
-# Start client using go run (always uses latest code)
-echo -e "${GREEN}Starting Renoter client (go run)...${NC}"
+# Start client using built executable
+echo -e "${GREEN}Starting Renoter client...${NC}"
 if [ -z "$VERBOSE" ]; then
-    go run ./cmd/client -listen="$CLIENT_LISTEN" -path="$RENOTER_PATH" -server-relays="$CLIENT_SERVER_RELAYS" > client.log 2>&1 &
+    ./renoter-client -listen="$CLIENT_LISTEN" -path="$RENOTER_PATH" -server-relays="$CLIENT_SERVER_RELAYS" > client.log 2>&1 &
 else
-    VERBOSE="$VERBOSE" go run ./cmd/client -listen="$CLIENT_LISTEN" -path="$RENOTER_PATH" -server-relays="$CLIENT_SERVER_RELAYS" -verbose="$VERBOSE" > client.log 2>&1 &
+    VERBOSE="$VERBOSE" ./renoter-client -listen="$CLIENT_LISTEN" -path="$RENOTER_PATH" -server-relays="$CLIENT_SERVER_RELAYS" -verbose="$VERBOSE" > client.log 2>&1 &
 fi
 CLIENT_PID=$!
 echo "Client PID: $CLIENT_PID"
