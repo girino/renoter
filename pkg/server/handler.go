@@ -111,9 +111,11 @@ func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
 	}
 
 	// Publish inner event to all relays using SimplePool
+	// IMPORTANT: This should only be called once per inner event
 	relayURLs := r.GetRelayURLs()
-	logging.DebugMethod("server.handler", "HandleEvent", "Publishing inner event %s (kind %d) to %d relays", innerEvent.ID, innerEvent.Kind, len(relayURLs))
+	logging.Info("server.handler.HandleEvent: About to publish inner event %s (kind %d) to %d relays via PublishMany", innerEvent.ID, innerEvent.Kind, len(relayURLs))
 	publishResults := r.GetPool().PublishMany(ctx, relayURLs, innerEvent)
+	logging.DebugMethod("server.handler", "HandleEvent", "PublishMany started for inner event %s, collecting results...", innerEvent.ID)
 
 	// Collect results
 	successCount := 0
