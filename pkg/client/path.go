@@ -68,4 +68,3 @@ func ValidatePath(npubs []string) ([][]byte, error) {
 	logging.Info("client.path.ValidatePath: Successfully validated all %d npubs in Renoter path", len(npubs))
 	return publicKeys, nil
 }
-

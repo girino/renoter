@@ -3,15 +3,15 @@ package main
 import (
 	"context"
 	"flag"
-	"log"
-	"os"
-	"os/signal"
-	"strings"
-	"syscall"
-	"renoter/pkg/server"
 	"github.com/girino/nostr-lib/logging"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip19"
+	"log"
+	"os"
+	"os/signal"
+	"renoter/pkg/server"
+	"strings"
+	"syscall"
 )
 
 func main() {
@@ -107,4 +107,3 @@ func main() {
 	// Keep running
 	<-ctx.Done()
 }
-
