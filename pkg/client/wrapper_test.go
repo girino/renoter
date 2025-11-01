@@ -182,34 +182,28 @@ func TestPadEventToMultipleOf64(t *testing.T) {
 	}
 }
 
-func TestIsPowerOfTwo(t *testing.T) {
+func TestNextMultipleOf64(t *testing.T) {
 	tests := []struct {
+		name string
 		n    int
-		want bool
+		want int
 	}{
-		{1, true},   // 2^0
-		{2, true},   // 2^1
-		{4, true},   // 2^2
-		{8, true},   // 2^3
-		{16, true},  // 2^4
-		{32, true},  // 2^5
-		{64, true},  // 2^6
-		{128, true}, // 2^7
-		{256, true}, // 2^8
-		{3, false},
-		{5, false},
-		{6, false},
-		{7, false},
-		{9, false},
-		{15, false},
-		{0, false},
-		{-1, false},
+		{"n=1", 1, 64},
+		{"n=32", 32, 64},
+		{"n=64", 64, 64},
+		{"n=65", 65, 128},
+		{"n=100", 100, 128},
+		{"n=128", 128, 128},
+		{"n=129", 129, 192},
+		{"n=0", 0, 64},
+		{"n=-1", -1, 64},
+		{"n=1024", 1024, 1024},
+		{"n=1025", 1025, 1088},
 	}
-
 	for _, tt := range tests {
-		t.Run(fmt.Sprintf("n=%d", tt.n), func(t *testing.T) {
-			if got := isPowerOfTwo(tt.n); got != tt.want {
-				t.Errorf("isPowerOfTwo(%d) = %v, want %v", tt.n, got, tt.want)
+		t.Run(tt.name, func(t *testing.T) {
+			if got := nextMultipleOf64(tt.n); got != tt.want {
+				t.Errorf("nextMultipleOf64() = %v, want %v", got, tt.want)
 			}
 		})
 	}
