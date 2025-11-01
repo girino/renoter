@@ -174,7 +174,7 @@ func compareByteSlices(a, b []byte) bool {
 	return true
 }
 
-func TestValidatePath_Deduplication(t *testing.T) {
+func TestValidatePath_RejectsDuplicates(t *testing.T) {
 	// Generate test keys
 	sk1 := nostr.GeneratePrivateKey()
 	pk1, _ := nostr.GetPublicKey(sk1)
@@ -184,25 +184,28 @@ func TestValidatePath_Deduplication(t *testing.T) {
 	pk2, _ := nostr.GetPublicKey(sk2)
 	npub2, _ := nip19.EncodePublicKey(pk2)
 
-	// Test with duplicate npubs in input
-	npubs := []string{npub1, npub2, npub1, npub2, npub1} // 3 duplicates of npub1, 2 duplicates of npub2
+	// Test with duplicate npubs in input - should error
+	npubs := []string{npub1, npub2, npub1} // npub1 appears twice
 	result, err := ValidatePath(npubs)
-	if err != nil {
-		t.Fatalf("ValidatePath() unexpected error: %v", err)
+	if err == nil {
+		t.Fatalf("ValidatePath() should error on duplicates, got nil error")
+	}
+	if result != nil {
+		t.Errorf("ValidatePath() should return nil result on error, got %d Renoters", len(result))
 	}
 
-	// Should return only 2 unique Renoters
-	if len(result) != 2 {
-		t.Errorf("ValidatePath() with duplicates should return 2 unique Renoters, got %d", len(result))
+	// Verify error message mentions duplicates
+	if err.Error() == "" {
+		t.Error("ValidatePath() error message should not be empty")
 	}
 
-	// Verify no duplicates in result
-	seen := make(map[string]bool)
-	for _, pubkey := range result {
-		pubkeyHex := hex.EncodeToString(pubkey)
-		if seen[pubkeyHex] {
-			t.Errorf("ValidatePath() result contains duplicate pubkey: %s", pubkeyHex[:16])
-		}
-		seen[pubkeyHex] = true
+	// Test with multiple duplicates
+	npubs2 := []string{npub1, npub2, npub1, npub2, npub1} // Multiple duplicates
+	result2, err2 := ValidatePath(npubs2)
+	if err2 == nil {
+		t.Fatalf("ValidatePath() should error on multiple duplicates, got nil error")
+	}
+	if result2 != nil {
+		t.Errorf("ValidatePath() should return nil result on error, got %d Renoters", len(result2))
 	}
 }
