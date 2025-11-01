@@ -30,37 +30,44 @@ func padEventToPowerOfTwo(event *nostr.Event) (*nostr.Event, error) {
 	}
 	currentSize := len(eventJSON)
 
-	// Calculate additional sizes that will be added if not present:
-	// - ID: 64 hex chars = 64 bytes in JSON string field (with quotes)
-	// - Signature: 128 hex chars = 128 bytes in JSON string field (with quotes)
-	// - Padding tag base: ["padding",""] = ~18 bytes
-	// In JSON: "id":"64hexchars" = 2 + 64 + 2 = 68 bytes, but we'll be more precise
-	// Let's estimate: "id":"..." with quotes and comma = ~70 bytes
-	// "sig":"..." = ~134 bytes
-	// ["padding",""] = ~18 bytes
-
+	// Calculate additional sizes that will be added if not present
+	// We need to measure actual JSON encoding sizes accurately
 	idSize := 0
 	if paddedEvent.ID == "" {
-		// ID is 64 hex chars, JSON encoded as "id":"64chars" = 70 bytes
-		idSize = 70
+		// Measure actual ID size: create a test event with ID
+		testEventID := *event
+		testEventID.ID = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" // 64 hex chars
+		testJSONWithID, _ := json.Marshal(&testEventID)
+		testJSONWithoutID, _ := json.Marshal(event)
+		idSize = len(testJSONWithID) - len(testJSONWithoutID)
 	}
 
 	sigSize := 0
 	if paddedEvent.Sig == "" {
-		// Signature is 128 hex chars, JSON encoded as "sig":"128chars" = 134 bytes
-		sigSize = 134
+		// Measure actual signature size: create a test event with signature
+		testEventSig := *event
+		testEventSig.Sig = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" // 128 hex chars
+		testJSONWithSig, _ := json.Marshal(&testEventSig)
+		testJSONWithoutSig, _ := json.Marshal(event)
+		sigSize = len(testJSONWithSig) - len(testJSONWithoutSig)
 	}
 
-	// Padding tag base size: ["padding",""] = ~18 bytes in JSON
-	tagBaseSize := 18
+	// Measure padding tag base size: ["padding",""]
+	testEventWithEmptyPadding := *event
+	if testEventWithEmptyPadding.Tags == nil {
+		testEventWithEmptyPadding.Tags = nostr.Tags{}
+	}
+	testEventWithEmptyPadding.Tags = append(testEventWithEmptyPadding.Tags, nostr.Tag{"padding", ""})
+	testJSONWithEmptyPadding, _ := json.Marshal(&testEventWithEmptyPadding)
+	tagBaseSize := len(testJSONWithEmptyPadding) - currentSize
 
-	// Calculate total size including missing fields and padding tag
+	// Calculate total size including missing fields and padding tag base
 	totalSize := currentSize + idSize + sigSize + tagBaseSize
 
 	// Find next power of 2 for the total size
 	nextPowerOf2 := nextPowerOfTwo(totalSize)
 
-	// Calculate exact padding needed
+	// Calculate exact padding needed in the padding string
 	paddingNeeded := nextPowerOf2 - totalSize
 
 	// If no padding needed (already power of 2), return as-is
