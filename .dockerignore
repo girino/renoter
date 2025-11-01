@@ -1,0 +1,32 @@
+# Git
+.git
+.gitignore
+
+# Build artifacts
+renoter-client
+renoter-server
+*.log
+
+# Documentation
+README.md
+PLAN.md
+
+# Environment files (should be mounted or set via docker-compose)
+.env
+example.env
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test files
+*_test.go
+**/*_test.go
+

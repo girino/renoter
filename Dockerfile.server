@@ -1,0 +1,32 @@
+# Multi-stage Dockerfile for renoter-server only
+FROM golang:1.21-alpine AS builder
+
+RUN apk add --no-cache git ca-certificates
+
+WORKDIR /build
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+# Build only server binary
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags '-extldflags "-static"' -o renoter-server ./cmd/server
+
+FROM alpine:latest
+
+RUN apk --no-cache add ca-certificates
+
+RUN addgroup -g 1000 renoter && \
+    adduser -D -u 1000 -G renoter renoter
+
+WORKDIR /app
+
+COPY --from=builder /build/renoter-server .
+
+RUN chown -R renoter:renoter /app
+
+USER renoter
+
+CMD ["./renoter-server"]
+

@@ -10,6 +10,9 @@ server
 *.dylib
 *.log
 
+# Docker
+docker-compose.override.yml
+
 # Environment files
 .env
 
