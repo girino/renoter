@@ -64,6 +64,20 @@ func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
 	}
 	logging.Info("server.handler.HandleEvent: Deserialized inner event: ID=%s, Kind=%d", innerEvent.ID, innerEvent.Kind)
 
+	// Check for replay attacks on the inner event (after decryption)
+	// This prevents the same inner event from being published multiple times
+	// CRITICAL: This must happen IMMEDIATELY after decryption, before any other processing
+	r.eventMu.Lock()
+	if r.eventStore[innerEvent.ID] {
+		r.eventMu.Unlock()
+		logging.Warn("server.handler.HandleEvent: Inner event %s already published, skipping duplicate", innerEvent.ID)
+		return fmt.Errorf("inner event %s already published", innerEvent.ID)
+	}
+	// Mark inner event as published BEFORE any other operations to prevent race conditions
+	r.eventStore[innerEvent.ID] = true
+	r.eventMu.Unlock()
+	logging.DebugMethod("server.handler", "HandleEvent", "Atomically checked and marked inner event %s as published", innerEvent.ID)
+
 	// Check if this is a final event or another wrapper
 	if innerEvent.Kind == 29000 {
 		logging.DebugMethod("server.handler", "HandleEvent", "Inner event is another wrapper (kind 29000), forwarding to next Renoter")

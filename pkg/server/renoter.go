@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/girino/nostr-lib/logging"
 	"github.com/nbd-wtf/go-nostr"
@@ -16,6 +17,10 @@ type Renoter struct {
 
 	// Public key derived from private key
 	PublicKey string
+
+	// Event store for replay detection (in-memory map of event IDs)
+	eventStore map[string]bool
+	eventMu    sync.RWMutex
 
 	// SimplePool for managing multiple relay connections (used for both listening and forwarding)
 	pool      *nostr.SimplePool
@@ -61,6 +66,7 @@ func NewRenoter(ctx context.Context, privateKey string, relayURLs []string) (*Re
 	return &Renoter{
 		PrivateKey: privateKey,
 		PublicKey:  pubkey,
+		eventStore: make(map[string]bool),
 		pool:       pool,
 		relayURLs:  relayURLs,
 	}, nil
@@ -81,6 +87,18 @@ func (r *Renoter) GetRelayURLs() []string {
 // decrypting one layer, and forwarding the inner event.
 func (r *Renoter) ProcessEvent(ctx context.Context, event *nostr.Event) error {
 	logging.Info("server.renoter.ProcessEvent: Processing wrapped event: ID=%s, Kind=%d, PubKey=%s", event.ID, event.Kind, event.PubKey[:16])
+
+	// Check for replay attacks - mark event as seen atomically to prevent race conditions
+	r.eventMu.Lock()
+	if r.eventStore[event.ID] {
+		r.eventMu.Unlock()
+		logging.Warn("server.renoter.ProcessEvent: Replay attack detected, event %s already processed", event.ID)
+		return fmt.Errorf("event %s already processed (replay attack)", event.ID)
+	}
+	// Mark event as seen immediately (before any other processing) to prevent concurrent processing
+	r.eventStore[event.ID] = true
+	r.eventMu.Unlock()
+	logging.DebugMethod("server.renoter", "ProcessEvent", "Atomically checked and marked event %s as seen in event store", event.ID)
 
 	// Verify signature
 	logging.DebugMethod("server.renoter", "ProcessEvent", "Verifying signature for event %s", event.ID)
