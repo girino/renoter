@@ -56,6 +56,12 @@ func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
 		logging.Error("server.handler.HandleEvent: failed to deserialize inner event for event %s: %v", event.ID, err)
 		return fmt.Errorf("failed to deserialize inner event: %w", err)
 	}
+
+	// Compute event ID if not set (should already be set from JSON, but ensure it's correct)
+	if innerEvent.ID == "" {
+		innerEvent.ID = innerEvent.GetID()
+		logging.DebugMethod("server.handler", "HandleEvent", "Computed inner event ID: %s", innerEvent.ID)
+	}
 	logging.DebugMethod("server.handler", "HandleEvent", "Deserialized inner event: ID=%s, Kind=%d", innerEvent.ID, innerEvent.Kind)
 
 	// Check if inner event was already published (replay protection for inner events)
@@ -141,18 +147,29 @@ func (r *Renoter) SubscribeToWrappedEvents(ctx context.Context) error {
 				ev := relayEvent.Event
 				logging.DebugMethod("server.handler", "SubscribeToWrappedEvents", "Received wrapper event: ID=%s from relay %s", ev.ID, relayEvent.Relay.URL)
 
-				// Process the event
+				// Process the event (this includes replay detection)
 				err := r.ProcessEvent(ctx, ev)
 				if err != nil {
-					// Log error but continue processing
-					logging.Warn("server.handler.SubscribeToWrappedEvents: Error processing event %s: %v", ev.ID, err)
+					// Log error but continue processing (replay attacks are expected and logged as warnings)
+					if fmt.Sprintf("%v", err) == fmt.Sprintf("event %s already processed (replay attack)", ev.ID) {
+						logging.DebugMethod("server.handler", "SubscribeToWrappedEvents", "Event %s already processed (duplicate from relay), skipping", ev.ID)
+					} else {
+						logging.Warn("server.handler.SubscribeToWrappedEvents: Error processing event %s: %v", ev.ID, err)
+					}
 					continue
 				}
 
 				// Handle (decrypt and forward)
+				// ProcessEvent already marked this wrapper event, so HandleEvent can safely decrypt and publish inner event
 				err = r.HandleEvent(ctx, ev)
 				if err != nil {
-					logging.Warn("server.handler.SubscribeToWrappedEvents: Error handling event %s: %v", ev.ID, err)
+					// If inner event was already published, that's expected (duplicate detected)
+					errStr := fmt.Sprintf("%v", err)
+					if errStr != "" && len(errStr) > 19 && errStr[len(errStr)-19:] == " already published" {
+						logging.DebugMethod("server.handler", "SubscribeToWrappedEvents", "Inner event already published, skipping duplicate: %v", err)
+					} else {
+						logging.Warn("server.handler.SubscribeToWrappedEvents: Error handling event %s: %v", ev.ID, err)
+					}
 					continue
 				}
 
