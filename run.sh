@@ -64,11 +64,11 @@ fi
 CLIENT_LISTEN=${CLIENT_LISTEN:-":8080"}
 VERBOSE=${VERBOSE:-""}
 
-# Build binaries if they don't exist
-if [ ! -f renoter-client ] || [ ! -f renoter-server ]; then
-    echo -e "${GREEN}Building binaries...${NC}"
-    go build -o renoter-client ./cmd/client
-    go build -o renoter-server ./cmd/server
+# Verify Go code compiles
+echo -e "${GREEN}Verifying Go code compiles...${NC}"
+if ! go build ./cmd/client ./cmd/server > /dev/null 2>&1; then
+    echo -e "${RED}Error: Go code does not compile. Fix errors before running.${NC}"
+    exit 1
 fi
 
 # Cleanup function to kill both processes
@@ -91,12 +91,12 @@ cleanup() {
 # Trap SIGINT and SIGTERM
 trap cleanup SIGINT SIGTERM
 
-# Start server
-echo -e "${GREEN}Starting Renoter server...${NC}"
+# Start server using go run (always uses latest code)
+echo -e "${GREEN}Starting Renoter server (go run)...${NC}"
 if [ -z "$RENOTER_PRIVATE_KEY" ]; then
-    ./renoter-server -relays="$RENOTER_RELAYS" > server.log 2>&1 &
+    go run ./cmd/server -relays="$RENOTER_RELAYS" > server.log 2>&1 &
 else
-    ./renoter-server -private-key="$RENOTER_PRIVATE_KEY" -relays="$RENOTER_RELAYS" > server.log 2>&1 &
+    go run ./cmd/server -private-key="$RENOTER_PRIVATE_KEY" -relays="$RENOTER_RELAYS" > server.log 2>&1 &
 fi
 SERVER_PID=$!
 echo "Server PID: $SERVER_PID"
@@ -111,12 +111,12 @@ if ! kill -0 $SERVER_PID 2>/dev/null; then
     exit 1
 fi
 
-# Start client
-echo -e "${GREEN}Starting Renoter client...${NC}"
+# Start client using go run (always uses latest code)
+echo -e "${GREEN}Starting Renoter client (go run)...${NC}"
 if [ -z "$VERBOSE" ]; then
-    ./renoter-client -listen="$CLIENT_LISTEN" -path="$RENOTER_PATH" -server-relays="$CLIENT_SERVER_RELAYS" > client.log 2>&1 &
+    go run ./cmd/client -listen="$CLIENT_LISTEN" -path="$RENOTER_PATH" -server-relays="$CLIENT_SERVER_RELAYS" > client.log 2>&1 &
 else
-    VERBOSE="$VERBOSE" ./renoter-client -listen="$CLIENT_LISTEN" -path="$RENOTER_PATH" -server-relays="$CLIENT_SERVER_RELAYS" -verbose="$VERBOSE" > client.log 2>&1 &
+    VERBOSE="$VERBOSE" go run ./cmd/client -listen="$CLIENT_LISTEN" -path="$RENOTER_PATH" -server-relays="$CLIENT_SERVER_RELAYS" -verbose="$VERBOSE" > client.log 2>&1 &
 fi
 CLIENT_PID=$!
 echo "Client PID: $CLIENT_PID"

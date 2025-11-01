@@ -52,7 +52,8 @@ VERBOSE=
 ```
 
 The script will:
-- Build binaries if they don't exist
+- Verify Go code compiles before running
+- Use `go run` to always execute the latest code (no need to rebuild)
 - Start the server in the background
 - Start the client in the background
 - Wait for Ctrl+C and cleanly kill both processes
