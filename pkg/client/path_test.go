@@ -108,12 +108,11 @@ func TestShufflePath(t *testing.T) {
 	}
 
 	// Test shuffling - path should be shuffled
-	shuffled1 := ShufflePath(path)
-	shuffled2 := ShufflePath(path)
+	shuffled := ShufflePath(path)
 
 	// Verify length is the same
-	if len(shuffled1) != len(path) {
-		t.Errorf("ShufflePath() length = %v, want %v", len(shuffled1), len(path))
+	if len(shuffled) != len(path) {
+		t.Errorf("ShufflePath() length = %v, want %v", len(shuffled), len(path))
 	}
 
 	// Verify original path is not modified
