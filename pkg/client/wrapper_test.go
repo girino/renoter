@@ -6,7 +6,6 @@ import (
 
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip19"
-	"github.com/nbd-wtf/go-nostr/nip44"
 )
 
 func TestWrapEvent(t *testing.T) {

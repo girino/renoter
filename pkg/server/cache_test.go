@@ -105,20 +105,37 @@ func TestEventCache_Pruning(t *testing.T) {
 	cache := NewEventCache(10, 2*time.Hour) // Small cache for testing
 	now := time.Now()
 
-	// Fill cache beyond max size
-	for i := 0; i < 15; i++ {
+	// Fill cache to exactly max size
+	for i := 0; i < 10; i++ {
 		cache.CheckAndMark("event"+string(rune(i)), now)
 	}
 
-	// Cache should be pruned
-	size := cache.Size()
-	if size > 10 {
-		t.Errorf("Cache should be pruned to <= 10, got %d", size)
+	if cache.Size() != 10 {
+		t.Fatalf("Cache should have 10 events, got %d", cache.Size())
 	}
 
-	// First events should be removed (FIFO)
-	if !cache.CheckAndMark("event0", now) {
-		t.Error("First event should have been pruned")
+	// Add one more event to trigger pruning (prune happens at >= maxSize)
+	cache.CheckAndMark("event10", now)
+
+	// Cache should be pruned - 25% removed (2 events), so 8 old + 1 new = 9
+	size := cache.Size()
+	expectedSize := 10 - (10/4) + 1 // 10 - 2 + 1 = 9
+	if size != expectedSize {
+		t.Errorf("Cache should be pruned to %d, got %d", expectedSize, size)
+	}
+
+	// First events should be removed (FIFO) - event0 and event1 should be pruned
+	// After pruning, event0 should not be in cache
+	if cache.CheckAndMark("event0", now) {
+		t.Error("First event 'event0' should have been pruned")
+	}
+	if cache.CheckAndMark("event1", now) {
+		t.Error("Second event 'event1' should have been pruned")
+	}
+
+	// Later events should still be in cache
+	if !cache.CheckAndMark("event2", now) {
+		t.Error("Event 'event2' should still be in cache")
 	}
 }
 
