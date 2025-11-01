@@ -36,24 +36,24 @@ func TestWrapEvent(t *testing.T) {
 	}
 
 	tests := []struct {
-		name      string
-		event     *nostr.Event
-		path      [][]byte
-		wantErr   bool
+		name       string
+		event      *nostr.Event
+		path       [][]byte
+		wantErr    bool
 		wantLayers int
 	}{
 		{
-			name:      "wrap with single Renoter",
-			event:     testEvent,
-			path:      [][]byte{path[0]},
-			wantErr:   false,
+			name:       "wrap with single Renoter",
+			event:      testEvent,
+			path:       [][]byte{path[0]},
+			wantErr:    false,
 			wantLayers: 1,
 		},
 		{
-			name:      "wrap with multiple Renoters",
-			event:     testEvent,
-			path:      path,
-			wantErr:   false,
+			name:       "wrap with multiple Renoters",
+			event:      testEvent,
+			path:       path,
+			wantErr:    false,
 			wantLayers: 2,
 		},
 		{

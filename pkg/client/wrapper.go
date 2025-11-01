@@ -31,26 +31,10 @@ func padEventToPowerOfTwo(event *nostr.Event) (*nostr.Event, error) {
 	currentSize := len(eventJSON)
 
 	// Calculate additional sizes that will be added if not present
-	// We need to measure actual JSON encoding sizes accurately
+	// ID and signature are already present in events (they're signed), so we can ignore them
+	// We only need to account for the padding tag base size
 	idSize := 0
-	if paddedEvent.ID == "" {
-		// Measure actual ID size: create a test event with ID
-		testEventID := *event
-		testEventID.ID = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" // 64 hex chars
-		testJSONWithID, _ := json.Marshal(&testEventID)
-		testJSONWithoutID, _ := json.Marshal(event)
-		idSize = len(testJSONWithID) - len(testJSONWithoutID)
-	}
-
 	sigSize := 0
-	if paddedEvent.Sig == "" {
-		// Measure actual signature size: create a test event with signature
-		testEventSig := *event
-		testEventSig.Sig = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" // 128 hex chars
-		testJSONWithSig, _ := json.Marshal(&testEventSig)
-		testJSONWithoutSig, _ := json.Marshal(event)
-		sigSize = len(testJSONWithSig) - len(testJSONWithoutSig)
-	}
 
 	// Measure padding tag base size: ["padding",""]
 	testEventWithEmptyPadding := *event
@@ -60,9 +44,11 @@ func padEventToPowerOfTwo(event *nostr.Event) (*nostr.Event, error) {
 	testEventWithEmptyPadding.Tags = append(testEventWithEmptyPadding.Tags, nostr.Tag{"padding", ""})
 	testJSONWithEmptyPadding, _ := json.Marshal(&testEventWithEmptyPadding)
 	tagBaseSize := len(testJSONWithEmptyPadding) - currentSize
+	logging.DebugMethod("client.wrapper", "padEventToPowerOfTwo", "Padding tag base size: %d bytes", tagBaseSize)
 
 	// Calculate total size including missing fields and padding tag base
 	totalSize := currentSize + idSize + sigSize + tagBaseSize
+	logging.Info("client.wrapper.padEventToPowerOfTwo: tagBaseSize=%d, currentSize=%d, totalSize=%d", tagBaseSize, currentSize, totalSize)
 
 	// Find next power of 2 for the total size
 	nextPowerOf2 := nextPowerOfTwo(totalSize)
