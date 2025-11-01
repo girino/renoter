@@ -1,4 +1,4 @@
-module renoter
+module github.com/girino/renoter
 
 go 1.25.3
 

@@ -9,7 +9,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"renoter/pkg/server"
+	"github.com/girino/renoter/pkg/server"
 	"strings"
 	"syscall"
 )

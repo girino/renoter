@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"renoter/internal/config"
+	"github.com/girino/renoter/internal/config"
 
 	"github.com/girino/nostr-lib/logging"
 	"github.com/nbd-wtf/go-nostr"

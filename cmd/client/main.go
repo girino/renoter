@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"renoter/pkg/client"
+	"github.com/girino/renoter/pkg/client"
 	"strings"
 	"syscall"
 
