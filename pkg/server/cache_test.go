@@ -67,37 +67,31 @@ func TestEventCache_CleanupOldEvents(t *testing.T) {
 	now := time.Now()
 
 	// Add old events (older than cutoff)
+	// Note: Cleanup runs during CheckAndMark, so old events are cleaned up immediately
+	// when we add new events
 	oldTime := now.Add(-2 * time.Hour)
 	cache.CheckAndMark("old1", oldTime)
 	cache.CheckAndMark("old2", oldTime)
 
-	// Add new events (within cutoff)
+	// When we add new1, cleanup runs and removes old1 and old2 (they're > 1 hour old)
 	cache.CheckAndMark("new1", now)
-	cache.CheckAndMark("new2", now.Add(-30*time.Minute))
 
-	initialSize := cache.Size()
-	if initialSize != 4 {
-		t.Fatalf("Initial cache size should be 4, got %d", initialSize)
+	// Verify old events were cleaned up - they should NOT be detected as replays
+	if cache.CheckAndMark("old1", now) {
+		t.Error("Old event 'old1' should have been cleaned up")
+	}
+	if cache.CheckAndMark("old2", now) {
+		t.Error("Old event 'old2' should have been cleaned up")
 	}
 
-	// Trigger cleanup by checking a new event (this will call cleanupOldEventsLocked)
-	cache.CheckAndMark("new3", now)
-
-	// Old events should be cleaned up
-	finalSize := cache.Size()
-	// After cleanup, old events should be removed, but we added new3, so size should be >= 3
-	if finalSize < 3 {
-		t.Errorf("Cache should have at least new events, size: %d", finalSize)
+	// Verify new event is in cache
+	if !cache.CheckAndMark("new1", now) {
+		t.Error("New event 'new1' should be in cache")
 	}
 
-	// Old events should be removed (replay check should return false since they're not in cache)
-	// Actually, if they're removed, CheckAndMark will return false for new events
-	// Let's check that old events are gone by trying to mark them again
-	// If they were cleaned up, they won't be in cache, so CheckAndMark returns false (not a replay)
-	// But we can't directly check this - the cache doesn't expose internal state
-	// Instead, verify the size decreased
-	if finalSize > initialSize {
-		t.Errorf("Cache size should decrease after cleanup (old events removed), but increased from %d to %d", initialSize, finalSize)
+	// Cache should have 1 event (new1)
+	if cache.Size() != 1 {
+		t.Errorf("Cache should have 1 event after cleanup, got %d", cache.Size())
 	}
 }
 
@@ -107,7 +101,7 @@ func TestEventCache_Pruning(t *testing.T) {
 
 	// Fill cache to exactly max size
 	for i := 0; i < 10; i++ {
-		eventID := "event" + string(rune('0'+i)) // Use '0'+i to get '0', '1', ..., '9'
+		eventID := "event" + string(rune(i+'0')) // Use i+'0' for '0' through '9'
 		cache.CheckAndMark(eventID, now)
 	}
 
@@ -117,7 +111,7 @@ func TestEventCache_Pruning(t *testing.T) {
 
 	// Add one more event to trigger pruning (prune happens at >= maxSize)
 	// Pruning removes 25% (10/4 = 2 events), then adds the new event
-	cache.CheckAndMark("event10", now)
+	cache.CheckAndMark("eventX", now)
 
 	// Cache should be pruned - 25% removed (2 events), so 8 old + 1 new = 9
 	size := cache.Size()
@@ -128,6 +122,7 @@ func TestEventCache_Pruning(t *testing.T) {
 
 	// First 2 events should be removed (FIFO) - event0 and event1 should be pruned
 	// After pruning, they should NOT be in cache (CheckAndMark returns false = not a replay)
+	// But wait - we need to check using the correct event IDs
 	if cache.CheckAndMark("event0", now) {
 		t.Error("First event 'event0' should have been pruned")
 	}
