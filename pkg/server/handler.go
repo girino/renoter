@@ -121,6 +121,8 @@ func (r *Renoter) SubscribeToWrappedEvents(ctx context.Context) error {
 	logging.Info("server.handler.SubscribeToWrappedEvents: Successfully subscribed to wrapper events (kind 29000) with our pubkey in 'p' tag on %d relays", len(relayURLs))
 
 	// Handle incoming events from all relays
+	// Track processed events to avoid processing the same event multiple times from different relays
+	processedEvents := make(map[string]bool)
 	go func() {
 		logging.Info("server.handler.SubscribeToWrappedEvents: Started event processing goroutine")
 		for {
@@ -135,9 +137,18 @@ func (r *Renoter) SubscribeToWrappedEvents(ctx context.Context) error {
 				}
 
 				ev := relayEvent.Event
-				logging.DebugMethod("server.handler", "SubscribeToWrappedEvents", "Received wrapper event: ID=%s from relay %s", ev.ID, relayEvent.Relay.URL)
+				logging.Info("server.handler.SubscribeToWrappedEvents: Received wrapper event: ID=%s from relay %s", ev.ID, relayEvent.Relay.URL)
+
+				// Deduplicate: skip if we already processed this event
+				if processedEvents[ev.ID] {
+					logging.Info("server.handler.SubscribeToWrappedEvents: Event %s already processed (received from relay %s, but previously processed), skipping", ev.ID, relayEvent.Relay.URL)
+					continue
+				}
+				processedEvents[ev.ID] = true
+				logging.Info("server.handler.SubscribeToWrappedEvents: Marked event %s as processed", ev.ID)
 
 				// Process the event (verify signature)
+				logging.Info("server.handler.SubscribeToWrappedEvents: About to ProcessEvent for event %s from relay %s", ev.ID, relayEvent.Relay.URL)
 				err := r.ProcessEvent(ctx, ev)
 				if err != nil {
 					logging.Warn("server.handler.SubscribeToWrappedEvents: Error processing event %s: %v", ev.ID, err)
@@ -145,13 +156,14 @@ func (r *Renoter) SubscribeToWrappedEvents(ctx context.Context) error {
 				}
 
 				// Handle (decrypt and forward)
+				logging.Info("server.handler.SubscribeToWrappedEvents: About to HandleEvent for event %s from relay %s", ev.ID, relayEvent.Relay.URL)
 				err = r.HandleEvent(ctx, ev)
 				if err != nil {
 					logging.Warn("server.handler.SubscribeToWrappedEvents: Error handling event %s: %v", ev.ID, err)
 					continue
 				}
 
-				logging.Info("server.handler.SubscribeToWrappedEvents: Successfully processed and forwarded event %s", ev.ID)
+				logging.Info("server.handler.SubscribeToWrappedEvents: Successfully processed and forwarded event %s from relay %s", ev.ID, relayEvent.Relay.URL)
 			}
 		}
 	}()
