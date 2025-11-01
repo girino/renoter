@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"renoter/internal/config"
+
 	"github.com/girino/nostr-lib/logging"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip44"
-	"renoter/internal/config"
 )
 
 // WrapEvent creates nested wrapper events for the given Renoter path.
