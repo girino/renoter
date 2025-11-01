@@ -64,6 +64,19 @@ func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
 		logging.Info("server.handler.HandleEvent: Inner event is final event (kind %d), will forward to network", innerEvent.Kind)
 	}
 
+	// Check if inner event was already published (replay protection for inner events)
+	// This prevents the same inner event from being published multiple times
+	r.eventMu.Lock()
+	innerAlreadyProcessed := r.eventStore[innerEvent.ID]
+	if innerAlreadyProcessed {
+		r.eventMu.Unlock()
+		logging.Warn("server.handler.HandleEvent: Inner event %s already published, skipping duplicate", innerEvent.ID)
+		return fmt.Errorf("inner event %s already published", innerEvent.ID)
+	}
+	r.eventStore[innerEvent.ID] = true
+	r.eventMu.Unlock()
+	logging.DebugMethod("server.handler", "HandleEvent", "Marked inner event %s as published", innerEvent.ID)
+
 	// Publish inner event to all relays using SimplePool
 	relayURLs := r.GetRelayURLs()
 	logging.DebugMethod("server.handler", "HandleEvent", "Publishing inner event %s to %d relays", innerEvent.ID, len(relayURLs))
