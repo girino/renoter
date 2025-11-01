@@ -123,8 +123,7 @@ func WrapEvent(originalEvent *nostr.Event, renterPath [][]byte) (*nostr.Event, e
 		// IMPORTANT: Pad WITHOUT modifying ID or signature. The server will remove padding tags
 		// before publishing, restoring the original event structure with valid signature.
 		logging.DebugMethod("client.wrapper", "WrapEvent", "Padding inner event before encryption (preserving original ID and signature, layer %d)", i)
-
-		paddedEvent, err := padEventToMultipleOf64(&innerEventCopy)
+		paddedEvent, err := padEventToMultipleOf64(currentEvent)
 		if err != nil {
 			logging.Error("client.wrapper.WrapEvent: failed to pad inner event at layer %d: %v", i, err)
 			return nil, fmt.Errorf("failed to pad inner event: %w", err)
