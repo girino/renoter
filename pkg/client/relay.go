@@ -12,6 +12,7 @@ import (
 // SetupRelay configures a khatru relay to intercept incoming events,
 // wrap them using the provided Renoter path, and forward to the server relays.
 func SetupRelay(relay *khatru.Relay, renterPath [][]byte, serverRelayURLs []string) error {
+	logging.Info("client.relay.SetupRelay: Setting up khatru relay with %d Renoters, server relays: %v", len(renterPath), serverRelayURLs)
 
 	// Create SimplePool for managing multiple relay connections
 	ctx := context.Background()
@@ -26,6 +27,7 @@ func SetupRelay(relay *khatru.Relay, renterPath [][]byte, serverRelayURLs []stri
 			return fmt.Errorf("failed to ensure relay %s: %w", url, err)
 		}
 	}
+	logging.Info("client.relay.SetupRelay: Successfully initialized SimplePool with %d server relays", len(serverRelayURLs))
 
 	// Helper function to process and wrap events
 	processEvent := func(ctx context.Context, event *nostr.Event) {
@@ -72,5 +74,6 @@ func SetupRelay(relay *khatru.Relay, renterPath [][]byte, serverRelayURLs []stri
 	// Events will be intercepted via OnEventSaved/OnEphemeralEvent, wrapped, and forwarded
 	// But won't be stored locally (unless StoreEvent is set elsewhere)
 
+	logging.Info("client.relay.SetupRelay: Successfully configured khatru relay with event interception via OnEventSaved/OnEphemeralEvent (no local storage)")
 	return nil
 }

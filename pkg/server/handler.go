@@ -114,6 +114,7 @@ func (r *Renoter) SubscribeToWrappedEvents(ctx context.Context) error {
 
 	// Subscribe to all relays using SimplePool
 	events := r.GetPool().SubscribeMany(ctx, relayURLs, filter)
+	logging.Info("server.handler.SubscribeToWrappedEvents: Successfully subscribed to wrapper events (kind 29000) with our pubkey in 'p' tag on %d relays", len(relayURLs))
 
 	// Handle incoming events from all relays
 	// Track processed events to avoid processing the same event multiple times from different relays
