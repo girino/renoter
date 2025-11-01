@@ -1,6 +1,7 @@
 package client
 
 import (
+	"encoding/hex"
 	"testing"
 
 	"github.com/nbd-wtf/go-nostr"
@@ -171,4 +172,37 @@ func compareByteSlices(a, b []byte) bool {
 		}
 	}
 	return true
+}
+
+func TestValidatePath_Deduplication(t *testing.T) {
+	// Generate test keys
+	sk1 := nostr.GeneratePrivateKey()
+	pk1, _ := nostr.GetPublicKey(sk1)
+	npub1, _ := nip19.EncodePublicKey(pk1)
+
+	sk2 := nostr.GeneratePrivateKey()
+	pk2, _ := nostr.GetPublicKey(sk2)
+	npub2, _ := nip19.EncodePublicKey(pk2)
+
+	// Test with duplicate npubs in input
+	npubs := []string{npub1, npub2, npub1, npub2, npub1} // 3 duplicates of npub1, 2 duplicates of npub2
+	result, err := ValidatePath(npubs)
+	if err != nil {
+		t.Fatalf("ValidatePath() unexpected error: %v", err)
+	}
+
+	// Should return only 2 unique Renoters
+	if len(result) != 2 {
+		t.Errorf("ValidatePath() with duplicates should return 2 unique Renoters, got %d", len(result))
+	}
+
+	// Verify no duplicates in result
+	seen := make(map[string]bool)
+	for _, pubkey := range result {
+		pubkeyHex := hex.EncodeToString(pubkey)
+		if seen[pubkeyHex] {
+			t.Errorf("ValidatePath() result contains duplicate pubkey: %s", pubkeyHex[:16])
+		}
+		seen[pubkeyHex] = true
+	}
 }
