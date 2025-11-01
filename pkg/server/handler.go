@@ -55,10 +55,15 @@ func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
 		return fmt.Errorf("failed to deserialize inner event: %w", err)
 	}
 
-	// Compute event ID if not set (should already be set from JSON, but ensure it's correct)
-	if innerEvent.ID == "" {
-		innerEvent.ID = innerEvent.GetID()
-		logging.DebugMethod("server.handler", "HandleEvent", "Computed inner event ID: %s", innerEvent.ID)
+	// Always recalculate the event ID after deserialization
+	// The ID in the JSON might have been computed before padding was applied,
+	// so we need to ensure it matches the current event structure (which includes padding tags)
+	oldID := innerEvent.ID
+	innerEvent.ID = innerEvent.GetID()
+	if oldID != innerEvent.ID {
+		logging.DebugMethod("server.handler", "HandleEvent", "Recalculated inner event ID: %s -> %s (ID was computed before padding)", oldID, innerEvent.ID)
+	} else {
+		logging.DebugMethod("server.handler", "HandleEvent", "Inner event ID verified: %s", innerEvent.ID)
 	}
 
 	// Note: The wrapper event (outer event) was already checked for replay attacks in ProcessEvent
