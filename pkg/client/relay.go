@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/fiatjaf/khatru"
 	"github.com/girino/nostr-lib/logging"
