@@ -35,6 +35,13 @@ func SetupRelay(relay *khatru.Relay, renterPath [][]byte, serverRelayURLs []stri
 		return rejectEventHandler(ctx, event, renterPath, serverPool, serverRelayURLs)
 	})
 
+	// OnEphemeralEvent handler: Prevent "no one was listening" rejection for ephemeral events
+	// Empty handler is sufficient - ephemeral events will still go through RejectEvent
+	relay.OnEphemeralEvent = append(relay.OnEphemeralEvent, func(ctx context.Context, event *nostr.Event) {
+		// Empty handler - just prevents khatru from rejecting ephemeral events
+		// Actual processing happens via RejectEvent hook
+	})
+
 	// Do NOT set StoreEvent - khatru doesn't save by default
 	// Events will be intercepted via RejectEvent, checked for size, wrapped, and forwarded
 	// But won't be stored locally (unless StoreEvent is set elsewhere)
