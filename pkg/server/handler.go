@@ -141,7 +141,13 @@ func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
 		logging.Error("server.handler.HandleEvent: 29000 event PoW validation failed: %v", err)
 		return fmt.Errorf("invalid PoW for 29000 event: %w", err)
 	}
-	logging.DebugMethod("server.handler", "HandleEvent", "29000 event PoW validated successfully")
+	// Check that the committed difficulty matches the expected difficulty
+	committedDiff := nip13.CommittedDifficulty(&inner29000)
+	if committedDiff != config.PoWDifficulty {
+		logging.Error("server.handler.HandleEvent: 29000 event committed difficulty %d does not match expected %d", committedDiff, config.PoWDifficulty)
+		return fmt.Errorf("29000 event committed difficulty %d does not match expected %d", committedDiff, config.PoWDifficulty)
+	}
+	logging.DebugMethod("server.handler", "HandleEvent", "29000 event PoW validated successfully (difficulty: %d)", config.PoWDifficulty)
 
 	// Decrypt the 29000 event
 	sender29000Pubkey := inner29000.PubKey
@@ -204,7 +210,13 @@ func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
 			logging.Error("server.handler.HandleEvent: inner 29000 event PoW validation failed: %v", err)
 			return fmt.Errorf("invalid PoW for inner 29000 event: %w", err)
 		}
-		logging.DebugMethod("server.handler", "HandleEvent", "Inner 29000 event PoW validated successfully")
+		// Check that the committed difficulty matches the expected difficulty
+		committedDiff := nip13.CommittedDifficulty(&innerEvent)
+		if committedDiff != config.PoWDifficulty {
+			logging.Error("server.handler.HandleEvent: inner 29000 event committed difficulty %d does not match expected %d", committedDiff, config.PoWDifficulty)
+			return fmt.Errorf("inner 29000 event committed difficulty %d does not match expected %d", committedDiff, config.PoWDifficulty)
+		}
+		logging.DebugMethod("server.handler", "HandleEvent", "Inner 29000 event PoW validated successfully (difficulty: %d)", config.PoWDifficulty)
 
 		// Get next Renoter from "p" tag of inner 29000
 		nextRenoterPubkey := ""
