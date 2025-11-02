@@ -221,7 +221,7 @@ This NIP is compatible with existing Nostr implementations:
 ## Reference Implementation
 
 - **Go Implementation**: https://github.com/girino/renoter
-- **Version**: 1.0.0-alpha
+- **Version**: 1.0.0
 
 ## Example
 
