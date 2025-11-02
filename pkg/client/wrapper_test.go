@@ -2,7 +2,6 @@ package client
 
 import (
 	"encoding/hex"
-	"encoding/json"
 	"testing"
 
 	"github.com/girino/renoter/internal/config"
