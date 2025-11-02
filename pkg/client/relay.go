@@ -34,7 +34,20 @@ func SetupRelay(relay *khatru.Relay, renterPath [][]byte, serverRelayURLs []stri
 
 	// RejectEvent handler: Check size and process events
 	// This runs before the event is accepted, allowing us to reject oversized events
-	relay.RejectEvent = append(relay.RejectEvent, func(ctx context.Context, event *nostr.Event) (reject bool, msg string) {
+	relay.RejectEvent = append(relay.RejectEvent, makeRejectEventHandler(renterPath, serverPool, serverRelayURLs))
+
+	// Do NOT set StoreEvent - khatru doesn't save by default
+	// Events will be intercepted via RejectEvent, checked for size, wrapped, and forwarded
+	// But won't be stored locally (unless StoreEvent is set elsewhere)
+
+	logging.Info("client.relay.SetupRelay: Successfully configured khatru relay with event processing via RejectEvent (size checking and forwarding, no local storage)")
+	return nil
+}
+
+// makeRejectEventHandler creates a RejectEvent handler function that checks event size
+// and processes acceptable events by wrapping and forwarding them.
+func makeRejectEventHandler(renterPath [][]byte, serverPool *nostr.SimplePool, serverRelayURLs []string) func(ctx context.Context, event *nostr.Event) (reject bool, msg string) {
+	return func(ctx context.Context, event *nostr.Event) (reject bool, msg string) {
 		// Shuffle the Renoter path for each event to randomize routing
 		// This improves privacy by ensuring events don't always follow the same path
 		shuffledPath := ShufflePath(renterPath)
@@ -93,14 +106,7 @@ func SetupRelay(relay *khatru.Relay, renterPath [][]byte, serverRelayURLs []stri
 
 		// Don't reject - return false so event continues (though it won't be stored since StoreEvent is not set)
 		return false, ""
-	})
-
-	// Do NOT set StoreEvent - khatru doesn't save by default
-	// Events will be intercepted via RejectEvent, checked for size, wrapped, and forwarded
-	// But won't be stored locally (unless StoreEvent is set elsewhere)
-
-	logging.Info("client.relay.SetupRelay: Successfully configured khatru relay with event processing via RejectEvent (size checking and forwarding, no local storage)")
-	return nil
+	}
 }
 
 // contains is a helper function to check if a string contains a substring (case-insensitive).
