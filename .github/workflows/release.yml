@@ -14,24 +14,36 @@ jobs:
     strategy:
       matrix:
         include:
+          # Linux architectures
           - goos: linux
             goarch: amd64
             output: renoter-client-linux-amd64
           - goos: linux
             goarch: arm64
             output: renoter-client-linux-arm64
+          - goos: linux
+            goarch: arm
+            output: renoter-client-linux-armv7
+          - goos: linux
+            goarch: 386
+            output: renoter-client-linux-386
+          # macOS architectures
           - goos: darwin
             goarch: amd64
             output: renoter-client-darwin-amd64
           - goos: darwin
             goarch: arm64
             output: renoter-client-darwin-arm64
+          # Windows architectures
           - goos: windows
             goarch: amd64
             output: renoter-client-windows-amd64.exe
           - goos: windows
             goarch: arm64
             output: renoter-client-windows-arm64.exe
+          - goos: windows
+            goarch: 386
+            output: renoter-client-windows-386.exe
     steps:
       - uses: actions/checkout@v4
 
