@@ -133,7 +133,7 @@ func TestWrapEvent_ReverseOrder(t *testing.T) {
 		t.Error("Wrapper event should have 'p' tag")
 	}
 
-		firstPubkey := hex.EncodeToString(path[0])
+	firstPubkey := hex.EncodeToString(path[0])
 	if wrapped.Tags[0][1] != firstPubkey {
 		t.Errorf("Wrapper 'p' tag should contain first Renoter's pubkey")
 	}

@@ -108,7 +108,7 @@ func TestPadEventToExactSize_ExactSize(t *testing.T) {
 
 func TestRenoter_GetPool(t *testing.T) {
 	ctx := context.Background()
-	
+
 	// Start a test relay
 	testRelay, err := StartTestRelay(ctx)
 	if err != nil {
@@ -132,7 +132,7 @@ func TestRenoter_GetPool(t *testing.T) {
 
 func TestRenoter_GetRelayURLs(t *testing.T) {
 	ctx := context.Background()
-	
+
 	// Start a test relay
 	testRelay, err := StartTestRelay(ctx)
 	if err != nil {
@@ -160,10 +160,9 @@ func TestRenoter_GetRelayURLs(t *testing.T) {
 	}
 }
 
-
 func TestRenoter_ProcessEvent_ValidEvent(t *testing.T) {
 	ctx := context.Background()
-	
+
 	// Start a test relay
 	testRelay, err := StartTestRelay(ctx)
 	if err != nil {
@@ -207,7 +206,7 @@ func TestRenoter_ProcessEvent_ValidEvent(t *testing.T) {
 
 func TestRenoter_ProcessEvent_InvalidSignature(t *testing.T) {
 	ctx := context.Background()
-	
+
 	// Start a test relay
 	testRelay, err := StartTestRelay(ctx)
 	if err != nil {
@@ -253,7 +252,7 @@ func contains(s, substr string) bool {
 
 func TestRenoter_ProcessEvent_OldEvent(t *testing.T) {
 	ctx := context.Background()
-	
+
 	// Start a test relay
 	testRelay, err := StartTestRelay(ctx)
 	if err != nil {
@@ -292,4 +291,3 @@ func TestRenoter_ProcessEvent_OldEvent(t *testing.T) {
 // Note: HandleEvent and SubscribeToWrappedEvents require actual relay connections
 // or complex mocking. These would be better suited for integration tests.
 // The above tests cover the testable parts of the handler functions.
-
