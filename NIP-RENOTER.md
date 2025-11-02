@@ -111,7 +111,7 @@ When a Renoter receives a 29001 event:
    - Check `tags["p"]` contains this Renoter's pubkey (if not, silently drop)
    - Validate proof-of-work: `NIP13.CommittedDifficulty(event) >= 16`
    - Check for replay attacks (reject if event ID already seen)
-   - Reject events older than 1 hour (`CreatedAt`)
+   - Validate event age (reject events that are too old)
 5. Decrypt the 29000 content using the Renoter's private key (NIP-44)
 6. Remove padding tags from the decrypted event
 7. Deserialize to get inner event
@@ -182,11 +182,11 @@ Each wrapper layer uses a randomly generated key pair, breaking any linkability 
 
 ### Replay Attacks
 
-Renoters must maintain an in-memory cache of processed event IDs to prevent replay attacks. Recommended:
-- Maximum cache size: 5,000 entries
-- Age cutoff: Reject events older than 1 hour
-- Cache pruning: Remove oldest 25% when limit reached
-- Binary search optimization for cleanup
+Renoters MUST reject events that have already been processed. To implement this, Renoters must maintain a record of processed event IDs. Implementations should:
+
+- Track processed event IDs for events within a reasonable time window
+- Reject events with IDs that have been seen before
+- Implement cache management to prevent unbounded memory growth
 
 ### Metadata Privacy
 
