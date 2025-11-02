@@ -209,12 +209,12 @@ Renoters MUST reject events that have already been processed. To implement this,
 
 Renoters MUST reject events that are too old. Implementations should enforce reasonable age limits to prevent replay of stale events.
 
-## Backwards Compatibility
+## Compatibility
 
-This NIP is fully backwards compatible:
+This NIP is compatible with existing Nostr implementations:
 
 - Uses ephemeral event kinds (29000/29001) that don't interfere with existing events
-- No changes to existing event structures
+- No changes to existing event structures or other NIPs
 - Relays that don't implement this NIP will simply not store ephemeral wrapper events (per NIP-16)
 - Clients and relays that don't support Renoter continue to function normally
 
