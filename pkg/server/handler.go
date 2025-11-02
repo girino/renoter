@@ -135,13 +135,7 @@ func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
 
 	logging.DebugMethod("server.handler", "HandleEvent", "Inner 29000 event is addressed to us, decrypting")
 
-	// Validate proof-of-work for 29000 event
-	err = nip13.Check(inner29000.ID, config.PoWDifficulty)
-	if err != nil {
-		logging.Error("server.handler.HandleEvent: 29000 event PoW validation failed: %v", err)
-		return fmt.Errorf("invalid PoW for 29000 event: %w", err)
-	}
-	// Check that the committed difficulty matches the expected difficulty
+	// Validate proof-of-work for 29000 event (checks both committed difficulty and actual difficulty)
 	committedDiff := nip13.CommittedDifficulty(&inner29000)
 	if committedDiff != config.PoWDifficulty {
 		logging.Error("server.handler.HandleEvent: 29000 event committed difficulty %d does not match expected %d", committedDiff, config.PoWDifficulty)
@@ -204,13 +198,7 @@ func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
 	if innerEvent.Kind == config.WrapperEventKind {
 		logging.DebugMethod("server.handler", "HandleEvent", "Inner event is another 29000, re-wrapping for next Renoter")
 
-		// Validate proof-of-work for inner 29000 event
-		err = nip13.Check(innerEvent.ID, config.PoWDifficulty)
-		if err != nil {
-			logging.Error("server.handler.HandleEvent: inner 29000 event PoW validation failed: %v", err)
-			return fmt.Errorf("invalid PoW for inner 29000 event: %w", err)
-		}
-		// Check that the committed difficulty matches the expected difficulty
+		// Validate proof-of-work for inner 29000 event (checks both committed difficulty and actual difficulty)
 		committedDiff := nip13.CommittedDifficulty(&innerEvent)
 		if committedDiff != config.PoWDifficulty {
 			logging.Error("server.handler.HandleEvent: inner 29000 event committed difficulty %d does not match expected %d", committedDiff, config.PoWDifficulty)
