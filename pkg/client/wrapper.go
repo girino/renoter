@@ -48,7 +48,7 @@ func padEventToExactSize(event *nostr.Event, targetSize int) (*nostr.Event, erro
 	// Check if base event is too large
 	if totalSize > targetSize {
 		logging.Error("client.wrapper.padEventToExactSize: event base size %d (with tag overhead %d) exceeds target size %d", currentSize, tagBaseSize, targetSize)
-		return nil, fmt.Errorf("event base size %d exceeds target size %d", totalSize, targetSize)
+		return nil, fmt.Errorf("event too large: base event size %d bytes exceeds maximum %d bytes", totalSize, targetSize)
 	}
 
 	// Calculate exact padding needed
@@ -194,7 +194,7 @@ func WrapEvent(originalEvent *nostr.Event, renterPath [][]byte) (*nostr.Event, e
 
 	if outermost29000Size > config.StandardizedSize {
 		logging.Error("client.wrapper.WrapEvent: outermost 29000 event size %d bytes exceeds maximum %d bytes", outermost29000Size, config.StandardizedSize)
-		return nil, fmt.Errorf("outermost 29000 event size %d bytes exceeds maximum %d bytes", outermost29000Size, config.StandardizedSize)
+		return nil, fmt.Errorf("event too large: outermost 29000 event size %d bytes exceeds maximum %d bytes", outermost29000Size, config.StandardizedSize)
 	}
 
 	logging.DebugMethod("client.wrapper", "WrapEvent", "Padding outermost 29000 event to %d bytes (current size: %d)", config.StandardizedSize, outermost29000Size)

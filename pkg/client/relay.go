@@ -55,19 +55,9 @@ func rejectEventHandler(ctx context.Context, event *nostr.Event, renterPath [][]
 	// Try to wrap the event - this will check if the outermost 29000 exceeds 4KB
 	wrappedEvent, err := WrapEvent(event, shuffledPath)
 	if err != nil {
-		// Check if wrapping failed due to size limit
-		errStr := err.Error()
-		if contains(errStr, "outermost 29000 event size") && contains(errStr, "exceeds maximum") {
-			logging.Error("client.relay.RejectEvent: event %s outermost 29000 would exceed %d bytes: %v", event.ID, config.StandardizedSize, err)
-			return true, fmt.Sprintf("event too large: outermost 29000 event exceeds %d bytes", config.StandardizedSize)
-		}
-		if contains(errStr, "exceeds target size") || contains(errStr, "exceeds maximum") {
-			logging.Error("client.relay.RejectEvent: event %s would exceed %d bytes after wrapping: %v", event.ID, config.StandardizedSize, err)
-			return true, fmt.Sprintf("event too large: wrapped message would exceed %d bytes", config.StandardizedSize)
-		}
-		// Other wrapping errors - log but don't reject (let it go through normal processing)
+		// WrapEvent returns properly formatted error messages ready for the caller
 		logging.Error("client.relay.RejectEvent: failed to wrap event %s: %v", event.ID, err)
-		return false, ""
+		return true, err.Error()
 	}
 
 	// Event is acceptable size - publish the wrapped event (29001 will be larger than 4KB due to encryption, which is expected)
@@ -97,7 +87,3 @@ func rejectEventHandler(ctx context.Context, event *nostr.Event, renterPath [][]
 	return false, ""
 }
 
-// contains is a helper function to check if a string contains a substring (case-insensitive).
-func contains(s, substr string) bool {
-	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
-}
