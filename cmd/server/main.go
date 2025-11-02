@@ -4,12 +4,12 @@ import (
 	"context"
 	"flag"
 	"github.com/girino/nostr-lib/logging"
+	"github.com/girino/renoter/pkg/server"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip19"
 	"log"
 	"os"
 	"os/signal"
-	"github.com/girino/renoter/pkg/server"
 	"strings"
 	"syscall"
 )

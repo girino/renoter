@@ -8,18 +8,18 @@ import (
 
 func TestNewEventCache(t *testing.T) {
 	tests := []struct {
-		name          string
-		maxSize       int
+		name           string
+		maxSize        int
 		cutoffDuration time.Duration
 	}{
 		{
-			name:          "default cache",
-			maxSize:       5000,
+			name:           "default cache",
+			maxSize:        5000,
 			cutoffDuration: 2 * time.Hour,
 		},
 		{
-			name:          "small cache",
-			maxSize:       100,
+			name:           "small cache",
+			maxSize:        100,
 			cutoffDuration: 1 * time.Hour,
 		},
 	}
@@ -85,7 +85,7 @@ func TestEventCache_CleanupOldEvents(t *testing.T) {
 	if cache.CheckAndMark("old2", now) {
 		t.Error("Old event 'old2' should have been cleaned up")
 	}
-	
+
 	// Verify new event is in cache (replay detected)
 	if !cache.CheckAndMark("new1", now) {
 		t.Error("New event 'new1' should be in cache")
@@ -112,7 +112,7 @@ func TestEventCache_Pruning(t *testing.T) {
 
 	// Cache should be pruned - 25% removed (2 events), so 8 old + 1 new = 9
 	size := cache.Size()
-	expectedSize := 10 - (10/4) + 1 // 10 - 2 + 1 = 9
+	expectedSize := 10 - (10 / 4) + 1 // 10 - 2 + 1 = 9
 	if size != expectedSize {
 		t.Errorf("Cache should be pruned to %d, got %d", expectedSize, size)
 	}
@@ -138,4 +138,3 @@ func TestEventCache_Size(t *testing.T) {
 		t.Errorf("Cache size should be 5, got %d", cache.Size())
 	}
 }
-

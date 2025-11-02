@@ -3,11 +3,11 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/girino/renoter/pkg/client"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
-	"github.com/girino/renoter/pkg/client"
 	"strings"
 	"syscall"
 

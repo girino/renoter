@@ -22,4 +22,3 @@ func TestMainPackage(t *testing.T) {
 	// Actual functionality testing would require integration tests
 	// or refactoring main() into a testable function
 }
-

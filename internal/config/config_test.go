@@ -13,4 +13,3 @@ func TestWrapperEventKind(t *testing.T) {
 		t.Errorf("WrapperEventKind = %d, should be in ephemeral event range (20000-29999)", WrapperEventKind)
 	}
 }
-

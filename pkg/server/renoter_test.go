@@ -55,7 +55,7 @@ func TestNewRenoter(t *testing.T) {
 			}
 		})
 	}
-	
+
 	// Note: Tests that require actual relay connections are skipped
 	// Integration tests with mock relays would be needed for full coverage
 }
@@ -112,4 +112,3 @@ func TestRenoter_GetRelayURLs(t *testing.T) {
 		t.Error("Relay URLs should not be empty")
 	}
 }
-
