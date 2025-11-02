@@ -196,14 +196,18 @@ Renoters MUST reject events that have already been processed. To implement this,
 
 ### Key Management
 
-- Renoter private keys must be kept secure
-- Client wrapper keys are ephemeral and regenerated for each event
-- Never reuse wrapper keys across events
+- Renoter private keys MUST be kept secure
+- Client wrapper keys are ephemeral and MUST be regenerated for each event
+- Wrapper keys MUST NOT be reused across events
 
 ### Network Privacy
 
-- Clients should shuffle Renoter paths randomly to prevent consistent routing patterns
-- Multiple relays should be used for redundancy and to reduce correlation risk
+- Clients SHOULD randomize Renoter paths to prevent consistent routing patterns
+- Multiple relays SHOULD be used for redundancy and to reduce correlation risk
+
+### Event Age Validation
+
+Renoters MUST reject events that are too old. Implementations should enforce reasonable age limits to prevent replay of stale events.
 
 ## Backwards Compatibility
 
