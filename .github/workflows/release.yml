@@ -21,6 +21,9 @@ jobs:
           - goos: linux
             goarch: arm64
             output: renoter-client-linux-arm64
+          - goos: linux
+            goarch: arm
+            output: renoter-client-linux-armv7
           # macOS architectures
           - goos: darwin
             goarch: amd64
