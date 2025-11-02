@@ -43,19 +43,22 @@ chmod +x renoter-server-darwin-amd64
 docker pull ghcr.io/${{ github.repository }}/renoter-client:${{ version }}
 docker run -d \
   -p 8080:8080 \
-  -e RENOTER_PATH="npub1...,npub2..." \
-  -e CLIENT_SERVER_RELAYS="wss://relay1.com,wss://relay2.com" \
-  ghcr.io/${{ github.repository }}/renoter-client:${{ version }}
+  ghcr.io/${{ github.repository }}/renoter-client:${{ version }} \
+  -listen=":8080" \
+  -path="npub1...,npub2..." \
+  -server-relays="wss://relay1.com,wss://relay2.com"
 ```
 
 **Server:**
 ```bash
 docker pull ghcr.io/${{ github.repository }}/renoter-server:${{ version }}
 docker run -d \
-  -e RENOTER_PRIVATE_KEY="your-private-key-hex" \
-  -e RENOTER_RELAYS="wss://relay1.com,wss://relay2.com" \
-  ghcr.io/${{ github.repository }}/renoter-server:${{ version }}
+  ghcr.io/${{ github.repository }}/renoter-server:${{ version }} \
+  -private-key="your-private-key-hex" \
+  -relays="wss://relay1.com,wss://relay2.com"
 ```
+
+Note: Only `VERBOSE` can be set as an environment variable. All other parameters must be passed as command-line flags.
 
 ### Docker Compose
 
