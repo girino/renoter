@@ -171,15 +171,41 @@ jobs:
         run: |
           mkdir -p release-assets
           
-          # Client binaries
-          find . -name "client-*" -type f -exec mv {} release-assets/ \;
+          # Artifacts are downloaded into subdirectories named after the artifact name
+          # Find all client binaries (they're in directories like client-linux-amd64/)
+          find . -type d -name "client-*" -o -type f -name "client-*" | while read item; do
+            if [ -d "$item" ]; then
+              # It's a directory, find files inside it
+              find "$item" -type f -exec mv {} release-assets/ \;
+            elif [ -f "$item" ]; then
+              # It's a file in root, move it
+              mv "$item" release-assets/
+            fi
+          done
           
-          # Server binaries
-          find . -name "server-*" -type f -exec mv {} release-assets/ \;
+          # Find all server binaries (they're in directories like server-linux-amd64/)
+          find . -type d -name "server-*" -o -type f -name "server-*" | while read item; do
+            if [ -d "$item" ]; then
+              # It's a directory, find files inside it
+              find "$item" -type f -exec mv {} release-assets/ \;
+            elif [ -f "$item" ]; then
+              # It's a file in root, move it
+              mv "$item" release-assets/
+            fi
+          done
           
-          # Create checksums
+          # Create checksums (only if files exist)
           cd release-assets
-          sha256sum * > checksums.txt
+          if [ "$(ls -A . 2>/dev/null)" ]; then
+            sha256sum * > checksums.txt
+          else
+            echo "Error: No binaries found in release-assets directory"
+            echo "Contents of current directory:"
+            ls -la
+            echo "Artifacts downloaded:"
+            find . -type f -o -type d | head -20
+            exit 1
+          fi
 
       - name: Generate release notes
         id: release_notes
