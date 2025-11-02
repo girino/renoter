@@ -1,5 +1,7 @@
 # Nostr Renoter
 
+**Version: 1.0.0-alpha**
+
 A Nostr relay wrapper system that provides onion-routing encryption for events. The client wraps events using nested encryption (once per Renoter in the path), and Renoter servers decrypt one layer and forward to the next Renoter or final destination.
 
 ## Overview
