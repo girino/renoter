@@ -16,6 +16,7 @@ Renoter implements nested onion-routing encryption for Nostr events:
 - Routing via "p" tags for efficient filtering
 - Ephemeral event kinds (29000) for non-persistence
 - Automatic path validation
+- Proof-of-work (PoW) for spam protection: All 29000 wrapper events require PoW with difficulty 20 (~1M attempts on average)
 - Replay attack protection with bounded in-memory cache (max 5K entries)
 - Configurable cache cutoff duration (default: 2 hours)
 - Extensive debug logging with granular control
@@ -221,22 +222,27 @@ export VERBOSE=client.wrapper,server.handler,server.cache
 ### Event Wrapping (Client)
 
 1. Normal Nostr client publishes event to khatru relay (Renoter client)
-2. Client intercepts the event via `OnEventSaved`/`OnEphemeralEvent` hooks
+2. Client intercepts the event via `RejectEvent` hook
 3. Client creates nested wrapper events in **reverse order** of the Renoter path:
    - Last Renoter's encryption is the innermost
    - First Renoter's encryption is the outermost
    - Each wrapper event uses ephemeral kind 29000
    - Each wrapper includes a "p" tag with the destination Renoter's pubkey for routing
-4. Client publishes the final wrapped event to all specified server relays
+   - Each 29000 wrapper event is mined with proof-of-work (difficulty 20) before signing
+4. Client pads the outermost 29000 event to a standardized size (32KB) and wraps it in a 29001 container
+5. Client publishes the final wrapped event (29001) to all specified server relays
 
 ### Event Unwrapping (Server)
 
-1. Renoter server subscribes to wrapper events (kind 29000) with its pubkey in "p" tag
-2. Receives wrapped event and verifies signature
-3. Checks replay attack protection (rejects if already seen)
-4. Decrypts content using its private key (NIP-44)
-5. Deserializes inner event (either another wrapper or the final event)
-6. Publishes inner event to all configured relays
+1. Renoter server subscribes to wrapper events (kind 29001) with its pubkey in "p" tag
+2. Receives wrapped event (29001) and verifies signature
+3. Decrypts the 29001 event to get the inner 29000 event
+4. Validates proof-of-work for the 29000 event (checks committed difficulty >= 20)
+5. Checks replay attack protection (rejects if already seen)
+6. Decrypts the 29000 event content using its private key (NIP-44)
+7. Deserializes inner event (either another 29000 wrapper or the final event)
+8. If inner event is another 29000, validates its PoW and re-wraps it for the next Renoter
+9. Publishes inner event to all configured relays
 
 ### Replay Attack Protection
 
@@ -308,9 +314,11 @@ You can also use Go's standard library or Nostr tools to derive the npub from a 
 
 ## Security Considerations
 
+- **Proof-of-Work**: All 29000 wrapper events require PoW (difficulty 20) to prevent spam attacks
 - **Replay Protection**: Events are cached and rejected if processed twice (within the cache window)
 - **Age Validation**: Events older than 1 hour are automatically rejected
-- **Ephemeral Events**: Wrapper events use kind 29000 and are marked as non-persistent
+- **Ephemeral Events**: Wrapper events use kind 29000/29001 and are marked as non-persistent
+- **Standardized Sizes**: Messages are padded to fixed sizes (32KB) to prevent metadata leakage
 - **Private Keys**: Never commit private keys to version control. Use environment variables or secure key management.
 - **Network**: Ensure secure connections (WSS) to relays
 
