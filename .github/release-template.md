@@ -68,6 +68,12 @@ See the [README](https://github.com/__REPO__/blob/main/README.md#docker-deployme
 
 Full documentation is available in the [README](https://github.com/__REPO__/blob/main/README.md).
 
+## License
+
+This project is licensed under **Girino's Anarchist License (GAL)**.
+
+See `LICENSE` in the release assets for the full license text.
+
 ## Checksums
 
 See `checksums.txt` in the assets for SHA256 checksums of all binaries.

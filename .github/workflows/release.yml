@@ -181,6 +181,9 @@ jobs:
         run: |
           mkdir -p release-assets
           
+          # Copy LICENSE file to release assets
+          cp LICENSE release-assets/
+          
           # Artifacts are downloaded into subdirectories named after the artifact name
           # Find all client binaries (they're in directories like client-linux-amd64/)
           find . -type d -name "client-*" -o -type f -name "client-*" | while read item; do
