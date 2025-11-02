@@ -9,4 +9,4 @@ const WrapperEventKind = 29000
 const StandardizedWrapperKind = 29001
 
 // StandardizedSize is the target size for standardized wrapper events (8KB).
-const StandardizedSize = 8 * 1024 // 8192 bytes
+const StandardizedSize = 32 * 1024 // 8192 bytes

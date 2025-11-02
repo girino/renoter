@@ -265,17 +265,26 @@ func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
 		relayURLs := r.GetRelayURLs()
 		publishResults := r.GetPool().PublishMany(ctx, relayURLs, *new29001)
 		successCount := 0
+		failedRelays := []string{}
 		for result := range publishResults {
-			if result.Error == nil {
+			if result.Error != nil {
+				failedRelays = append(failedRelays, result.RelayURL)
+				logging.Error("server.handler.HandleEvent: failed to publish new 29001 %s to relay %s: %v", new29001.ID, result.RelayURL, result.Error)
+			} else {
 				successCount++
+				logging.DebugMethod("server.handler", "HandleEvent", "Successfully published new 29001 %s to relay %s", new29001.ID, result.RelayURL)
 			}
 		}
 
 		if successCount == 0 {
+			logging.Error("server.handler.HandleEvent: Failed to publish new 29001 %s to any of %d relays. Failed relays: %v", new29001.ID, len(relayURLs), failedRelays)
 			return fmt.Errorf("failed to publish new 29001 to any relay")
 		}
 
-		logging.Info("server.handler.HandleEvent: Successfully re-wrapped and published 29001 for next Renoter")
+		logging.Info("server.handler.HandleEvent: Successfully re-wrapped and published 29001 %s to %d/%d relays", new29001.ID, successCount, len(relayURLs))
+		if len(failedRelays) > 0 {
+			logging.Warn("server.handler.HandleEvent: Failed to publish 29001 %s to %d relay(s): %v", new29001.ID, len(failedRelays), failedRelays)
+		}
 		return nil
 	} else {
 		// Final event - publish as-is
@@ -283,17 +292,26 @@ func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
 		relayURLs := r.GetRelayURLs()
 		publishResults := r.GetPool().PublishMany(ctx, relayURLs, innerEvent)
 		successCount := 0
+		failedRelays := []string{}
 		for result := range publishResults {
-			if result.Error == nil {
+			if result.Error != nil {
+				failedRelays = append(failedRelays, result.RelayURL)
+				logging.Error("server.handler.HandleEvent: failed to publish final event %s to relay %s: %v", innerEvent.ID, result.RelayURL, result.Error)
+			} else {
 				successCount++
+				logging.DebugMethod("server.handler", "HandleEvent", "Successfully published final event %s to relay %s", innerEvent.ID, result.RelayURL)
 			}
 		}
 
 		if successCount == 0 {
+			logging.Error("server.handler.HandleEvent: Failed to publish final event %s to any of %d relays. Failed relays: %v", innerEvent.ID, len(relayURLs), failedRelays)
 			return fmt.Errorf("failed to publish final event to any relay")
 		}
 
-		logging.Info("server.handler.HandleEvent: Successfully published final event")
+		logging.Info("server.handler.HandleEvent: Successfully published final event %s to %d/%d relays", innerEvent.ID, successCount, len(relayURLs))
+		if len(failedRelays) > 0 {
+			logging.Warn("server.handler.HandleEvent: Failed to publish final event %s to %d relay(s): %v", innerEvent.ID, len(failedRelays), failedRelays)
+		}
 		return nil
 	}
 }
