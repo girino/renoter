@@ -137,9 +137,9 @@ func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
 
 	// Validate proof-of-work for 29000 event (checks both committed difficulty and actual difficulty)
 	committedDiff := nip13.CommittedDifficulty(&inner29000)
-	if committedDiff != config.PoWDifficulty {
-		logging.Error("server.handler.HandleEvent: 29000 event committed difficulty %d does not match expected %d", committedDiff, config.PoWDifficulty)
-		return fmt.Errorf("29000 event committed difficulty %d does not match expected %d", committedDiff, config.PoWDifficulty)
+	if committedDiff < config.PoWDifficulty {
+		logging.Error("server.handler.HandleEvent: 29000 event committed difficulty %d is less than required %d", committedDiff, config.PoWDifficulty)
+		return fmt.Errorf("29000 event committed difficulty %d is less than required %d", committedDiff, config.PoWDifficulty)
 	}
 	logging.DebugMethod("server.handler", "HandleEvent", "29000 event PoW validated successfully (difficulty: %d)", config.PoWDifficulty)
 
@@ -200,9 +200,9 @@ func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
 
 		// Validate proof-of-work for inner 29000 event (checks both committed difficulty and actual difficulty)
 		committedDiff := nip13.CommittedDifficulty(&innerEvent)
-		if committedDiff != config.PoWDifficulty {
-			logging.Error("server.handler.HandleEvent: inner 29000 event committed difficulty %d does not match expected %d", committedDiff, config.PoWDifficulty)
-			return fmt.Errorf("inner 29000 event committed difficulty %d does not match expected %d", committedDiff, config.PoWDifficulty)
+		if committedDiff < config.PoWDifficulty {
+			logging.Error("server.handler.HandleEvent: inner 29000 event committed difficulty %d is less than required %d", committedDiff, config.PoWDifficulty)
+			return fmt.Errorf("inner 29000 event committed difficulty %d is less than required %d", committedDiff, config.PoWDifficulty)
 		}
 		logging.DebugMethod("server.handler", "HandleEvent", "Inner 29000 event PoW validated successfully (difficulty: %d)", config.PoWDifficulty)
 
