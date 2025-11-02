@@ -8,5 +8,9 @@ const WrapperEventKind = 29000
 // These events are always padded to exactly StandardizedSize (8KB) to hide message size metadata.
 const StandardizedWrapperKind = 29001
 
-// StandardizedSize is the target size for standardized wrapper events (8KB).
-const StandardizedSize = 32 * 1024 // 8192 bytes
+// StandardizedSize is the target size for standardized wrapper events (32KB).
+const StandardizedSize = 32 * 1024 // 32768 bytes
+
+// PoWDifficulty is the proof-of-work difficulty for 29000 wrapper events (number of leading zero bits required).
+// Default is 16, which requires ~65536 attempts on average. This can be adjusted to balance spam prevention vs CPU cost.
+const PoWDifficulty = 16

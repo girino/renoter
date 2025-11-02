@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"encoding/hex"
 	"testing"
 
@@ -65,7 +66,7 @@ func TestWrapEvent(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			wrapped, err := WrapEvent(tt.event, tt.path)
+			wrapped, err := WrapEvent(context.Background(), tt.event, tt.path)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("WrapEvent() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -120,7 +121,7 @@ func TestWrapEvent_ReverseOrder(t *testing.T) {
 
 	path, _ := ValidatePath([]string{npub1, npub2, npub3})
 
-	wrapped, err := WrapEvent(testEvent, path)
+	wrapped, err := WrapEvent(context.Background(), testEvent, path)
 	if err != nil {
 		t.Fatalf("WrapEvent() error = %v", err)
 	}

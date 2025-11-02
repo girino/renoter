@@ -1,15 +1,16 @@
 package client
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 
-	"github.com/girino/renoter/internal/config"
-
 	"github.com/girino/nostr-lib/logging"
+	"github.com/girino/renoter/internal/config"
 	"github.com/nbd-wtf/go-nostr"
+	"github.com/nbd-wtf/go-nostr/nip13"
 	"github.com/nbd-wtf/go-nostr/nip44"
 )
 
@@ -86,7 +87,7 @@ func padEventToExactSize(event *nostr.Event, targetSize int) (*nostr.Event, erro
 // WrapEvent creates nested wrapper events for the given Renoter path.
 // Events are wrapped in reverse order (last Renoter first, first Renoter last).
 // Each wrapper event encrypts the inner event for the next Renoter in the path.
-func WrapEvent(originalEvent *nostr.Event, renterPath [][]byte) (*nostr.Event, error) {
+func WrapEvent(ctx context.Context, originalEvent *nostr.Event, renterPath [][]byte) (*nostr.Event, error) {
 	logging.DebugMethod("client.wrapper", "WrapEvent", "Starting event wrapping, path length: %d, original event ID: %s, kind: %d", len(renterPath), originalEvent.ID, originalEvent.Kind)
 
 	if len(renterPath) == 0 {
@@ -162,8 +163,22 @@ func WrapEvent(originalEvent *nostr.Event, renterPath [][]byte) (*nostr.Event, e
 
 		logging.DebugMethod("client.wrapper", "WrapEvent", "Created wrapper event structure (layer %d)", i)
 
-		// DON'T pad wrapper events - they're public and padding would leak metadata about size
-		// Compute ID and sign the wrapper event as-is
+		// Mine proof-of-work for 29000 wrapper events before signing
+		// This adds spam protection by requiring computational work
+		logging.DebugMethod("client.wrapper", "WrapEvent", "Mining PoW for 29000 wrapper event (difficulty %d, layer %d)", config.PoWDifficulty, i)
+		nonceTag, err := nip13.DoWork(ctx, *wrapperEvent, config.PoWDifficulty)
+		if err != nil {
+			logging.Error("client.wrapper.WrapEvent: failed to mine PoW for wrapper event at layer %d: %v", i, err)
+			return nil, fmt.Errorf("failed to mine PoW for wrapper event: %w", err)
+		}
+		// Add the nonce tag returned by DoWork
+		if wrapperEvent.Tags == nil {
+			wrapperEvent.Tags = nostr.Tags{}
+		}
+		wrapperEvent.Tags = append(wrapperEvent.Tags, nonceTag)
+		logging.DebugMethod("client.wrapper", "WrapEvent", "Mined PoW for wrapper event (layer %d)", i)
+
+		// Compute ID and sign the wrapper event (ID computation includes nonce tags)
 		wrapperEvent.ID = wrapperEvent.GetID()
 		if !wrapperEvent.CheckID() {
 			logging.Error("client.wrapper.WrapEvent: wrapper event ID %s failed CheckID validation (layer %d)", wrapperEvent.ID, i)

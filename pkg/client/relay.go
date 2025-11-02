@@ -51,7 +51,7 @@ func rejectEventHandler(ctx context.Context, event *nostr.Event, renterPath [][]
 	logging.DebugMethod("client.relay", "RejectEvent", "Checking event %s for size limits", event.ID)
 
 	// Try to wrap the event - this will check if the outermost 29000 exceeds 8KB
-	wrappedEvent, err := WrapEvent(event, shuffledPath)
+	wrappedEvent, err := WrapEvent(ctx, event, shuffledPath)
 	if err != nil {
 		// WrapEvent returns properly formatted error messages ready for the caller
 		logging.Error("client.relay.RejectEvent: failed to wrap event %s: %v", event.ID, err)

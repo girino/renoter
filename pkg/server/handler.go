@@ -10,6 +10,7 @@ import (
 	"github.com/girino/nostr-lib/logging"
 	"github.com/girino/renoter/internal/config"
 	"github.com/nbd-wtf/go-nostr"
+	"github.com/nbd-wtf/go-nostr/nip13"
 	"github.com/nbd-wtf/go-nostr/nip44"
 )
 
@@ -134,6 +135,14 @@ func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
 
 	logging.DebugMethod("server.handler", "HandleEvent", "Inner 29000 event is addressed to us, decrypting")
 
+	// Validate proof-of-work for 29000 event
+	err = nip13.Check(inner29000.ID, config.PoWDifficulty)
+	if err != nil {
+		logging.Error("server.handler.HandleEvent: 29000 event PoW validation failed: %v", err)
+		return fmt.Errorf("invalid PoW for 29000 event: %w", err)
+	}
+	logging.DebugMethod("server.handler", "HandleEvent", "29000 event PoW validated successfully")
+
 	// Decrypt the 29000 event
 	sender29000Pubkey := inner29000.PubKey
 	conversationKey29000, err := nip44.GenerateConversationKey(sender29000Pubkey, r.PrivateKey)
@@ -188,6 +197,14 @@ func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
 	// Check if inner event is another 29000 (next in path) or final event
 	if innerEvent.Kind == config.WrapperEventKind {
 		logging.DebugMethod("server.handler", "HandleEvent", "Inner event is another 29000, re-wrapping for next Renoter")
+
+		// Validate proof-of-work for inner 29000 event
+		err = nip13.Check(innerEvent.ID, config.PoWDifficulty)
+		if err != nil {
+			logging.Error("server.handler.HandleEvent: inner 29000 event PoW validation failed: %v", err)
+			return fmt.Errorf("invalid PoW for inner 29000 event: %w", err)
+		}
+		logging.DebugMethod("server.handler", "HandleEvent", "Inner 29000 event PoW validated successfully")
 
 		// Get next Renoter from "p" tag of inner 29000
 		nextRenoterPubkey := ""
