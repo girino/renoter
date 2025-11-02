@@ -7,12 +7,12 @@ Download the appropriate binary for your platform from the assets below.
 **Client:**
 ```bash
 # Linux
-wget https://github.com/${{ github.repository }}/releases/download/${{ tag }}/renoter-client-linux-amd64
+wget https://github.com/__REPO__/releases/download/__TAG__/renoter-client-linux-amd64
 chmod +x renoter-client-linux-amd64
 ./renoter-client-linux-amd64 -path="npub1...,npub2..." -server-relays="wss://relay1.com,wss://relay2.com"
 
 # macOS
-wget https://github.com/${{ github.repository }}/releases/download/${{ tag }}/renoter-client-darwin-amd64
+wget https://github.com/__REPO__/releases/download/__TAG__/renoter-client-darwin-amd64
 chmod +x renoter-client-darwin-amd64
 ./renoter-client-darwin-amd64 -path="npub1...,npub2..." -server-relays="wss://relay1.com,wss://relay2.com"
 
@@ -23,12 +23,12 @@ chmod +x renoter-client-darwin-amd64
 **Server:**
 ```bash
 # Linux
-wget https://github.com/${{ github.repository }}/releases/download/${{ tag }}/renoter-server-linux-amd64
+wget https://github.com/__REPO__/releases/download/__TAG__/renoter-server-linux-amd64
 chmod +x renoter-server-linux-amd64
 ./renoter-server-linux-amd64 -relays="wss://relay1.com,wss://relay2.com"
 
 # macOS
-wget https://github.com/${{ github.repository }}/releases/download/${{ tag }}/renoter-server-darwin-amd64
+wget https://github.com/__REPO__/releases/download/__TAG__/renoter-server-darwin-amd64
 chmod +x renoter-server-darwin-amd64
 ./renoter-server-darwin-amd64 -relays="wss://relay1.com,wss://relay2.com"
 
@@ -40,10 +40,10 @@ chmod +x renoter-server-darwin-amd64
 
 **Client:**
 ```bash
-docker pull ghcr.io/${{ github.repository }}/renoter-client:${{ version }}
+docker pull ghcr.io/__REPO__/renoter-client:__VERSION__
 docker run -d \
   -p 8080:8080 \
-  ghcr.io/${{ github.repository }}/renoter-client:${{ version }} \
+  ghcr.io/__REPO__/renoter-client:__VERSION__ \
   -listen=":8080" \
   -path="npub1...,npub2..." \
   -server-relays="wss://relay1.com,wss://relay2.com"
@@ -51,9 +51,9 @@ docker run -d \
 
 **Server:**
 ```bash
-docker pull ghcr.io/${{ github.repository }}/renoter-server:${{ version }}
+docker pull ghcr.io/__REPO__/renoter-server:__VERSION__
 docker run -d \
-  ghcr.io/${{ github.repository }}/renoter-server:${{ version }} \
+  ghcr.io/__REPO__/renoter-server:__VERSION__ \
   -private-key="your-private-key-hex" \
   -relays="wss://relay1.com,wss://relay2.com"
 ```
@@ -62,11 +62,11 @@ Note: Only `VERBOSE` can be set as an environment variable. All other parameters
 
 ### Docker Compose
 
-See the [README](https://github.com/${{ github.repository }}/blob/main/README.md#docker-deployment) for Docker Compose usage.
+See the [README](https://github.com/__REPO__/blob/main/README.md#docker-deployment) for Docker Compose usage.
 
 ## Documentation
 
-Full documentation is available in the [README](https://github.com/${{ github.repository }}/blob/main/README.md).
+Full documentation is available in the [README](https://github.com/__REPO__/blob/main/README.md).
 
 ## Checksums
 
