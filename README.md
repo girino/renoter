@@ -352,7 +352,11 @@ VERBOSE=client.wrapper,server.handler ./renoter-client ...
 
 ## License
 
-[Add your license here]
+This project is licensed under **Girino's Anarchist License (GAL)**.
+
+See [LICENSE](LICENSE) for full license text.
+
+Original license: http://girino.org/license/
 
 ## Contributing
 
