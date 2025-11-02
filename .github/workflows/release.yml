@@ -220,10 +220,10 @@ jobs:
       - name: Generate release notes
         id: release_notes
         run: |
-          # Read the template and substitute variables
-          sed -e "s|\${{ github.repository }}|${{ github.repository }}|g" \
-              -e "s|\${{ tag }}|${{ steps.version.outputs.tag }}|g" \
-              -e "s|\${{ version }}|${{ steps.version.outputs.version }}|g" \
+          # Read the template and substitute placeholders
+          sed -e "s|__REPO__|${{ github.repository }}|g" \
+              -e "s|__TAG__|${{ steps.version.outputs.tag }}|g" \
+              -e "s|__VERSION__|${{ steps.version.outputs.version }}|g" \
               .github/release-template.md > release-notes.md
           cat release-notes.md >> $GITHUB_STEP_SUMMARY
 
