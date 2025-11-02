@@ -3,11 +3,9 @@ package client
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/fiatjaf/khatru"
 	"github.com/girino/nostr-lib/logging"
-	"github.com/girino/renoter/internal/config"
 	"github.com/nbd-wtf/go-nostr"
 )
 
@@ -86,4 +84,3 @@ func rejectEventHandler(ctx context.Context, event *nostr.Event, renterPath [][]
 	// Don't reject - return false so event continues (though it won't be stored since StoreEvent is not set)
 	return false, ""
 }
-
