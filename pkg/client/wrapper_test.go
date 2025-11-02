@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"testing"
 
 	"github.com/girino/renoter/internal/config"
@@ -132,8 +133,115 @@ func TestWrapEvent_ReverseOrder(t *testing.T) {
 		t.Error("Wrapper event should have 'p' tag")
 	}
 
-	firstPubkey := hex.EncodeToString(path[0])
+		firstPubkey := hex.EncodeToString(path[0])
 	if wrapped.Tags[0][1] != firstPubkey {
 		t.Errorf("Wrapper 'p' tag should contain first Renoter's pubkey")
 	}
+}
+
+func TestPadEventToExactSize(t *testing.T) {
+	event := &nostr.Event{
+		Kind:      1,
+		Content:   "Small content",
+		CreatedAt: nostr.Now(),
+		PubKey:    nostr.GeneratePrivateKey(),
+	}
+	event.Sign(event.PubKey)
+
+	targetSize := 1000 // 1KB target
+
+	// Test successful padding
+	padded, err := padEventToExactSize(event, targetSize)
+	if err != nil {
+		t.Fatalf("padEventToExactSize() error = %v", err)
+	}
+
+	// Verify size
+	jsonBytes, _ := json.Marshal(padded)
+	if len(jsonBytes) != targetSize {
+		t.Errorf("Padded event size = %d, want %d", len(jsonBytes), targetSize)
+	}
+
+	// Verify padding tag exists
+	foundPadding := false
+	for _, tag := range padded.Tags {
+		if len(tag) >= 1 && tag[0] == "padding" {
+			foundPadding = true
+			break
+		}
+	}
+	if !foundPadding {
+		t.Error("Padded event should have padding tag")
+	}
+}
+
+func TestPadEventToExactSize_TooLarge(t *testing.T) {
+	// Create a large event that exceeds target even with padding tag overhead
+	largeContent := make([]byte, 5000)
+	for i := range largeContent {
+		largeContent[i] = 'A'
+	}
+
+	event := &nostr.Event{
+		Kind:      1,
+		Content:   string(largeContent),
+		CreatedAt: nostr.Now(),
+		PubKey:    nostr.GeneratePrivateKey(),
+	}
+	event.Sign(event.PubKey)
+
+	// Try to pad to a size smaller than the event
+	targetSize := 100
+	_, err := padEventToExactSize(event, targetSize)
+
+	if err == nil {
+		t.Error("padEventToExactSize() should error when event is too large")
+	}
+	if err != nil && !contains(err.Error(), "too large") {
+		t.Errorf("Error message should mention 'too large', got: %v", err)
+	}
+}
+
+func TestWrapEvent_LargeEvent(t *testing.T) {
+	// Test wrapping an event that will produce a large 29000 wrapper
+	// We'll create an event that when wrapped will be close to the size limit
+	sk1 := nostr.GeneratePrivateKey()
+	pk1, _ := nostr.GetPublicKey(sk1)
+	npub1, _ := nip19.EncodePublicKey(pk1)
+
+	path, _ := ValidatePath([]string{npub1})
+
+	// Create event with content that will be close to size limit when wrapped
+	largeContent := make([]byte, 30*1024) // 30KB
+	for i := range largeContent {
+		largeContent[i] = 'A'
+	}
+
+	event := &nostr.Event{
+		Kind:      1,
+		Content:   string(largeContent),
+		CreatedAt: nostr.Now(),
+		PubKey:    nostr.GeneratePrivateKey(),
+	}
+	event.Sign(event.PubKey)
+
+	// This should succeed or fail depending on the exact size
+	_, err := WrapEvent(context.Background(), event, path)
+	// We just verify it doesn't panic - the actual result depends on PoW mining
+	if err != nil {
+		// Verify error mentions size
+		errMsg := err.Error()
+		if !(containsString(errMsg, "too large") || containsString(errMsg, "exceeds")) {
+			t.Logf("WrapEvent with large event: %v (expected if exceeds size limit)", err)
+		}
+	}
+}
+
+func containsString(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }

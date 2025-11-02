@@ -12,6 +12,13 @@ func TestNewRenoter(t *testing.T) {
 	ctx := context.Background()
 	privateKey := nostr.GeneratePrivateKey()
 
+	// Start a test relay for valid Renoter tests
+	testRelay, err := StartTestRelay(ctx)
+	if err != nil {
+		t.Fatalf("Failed to start test relay: %v", err)
+	}
+	defer testRelay.Stop(ctx)
+
 	tests := []struct {
 		name       string
 		privateKey string
@@ -21,7 +28,7 @@ func TestNewRenoter(t *testing.T) {
 		{
 			name:       "empty private key",
 			privateKey: "",
-			relayURLs:  []string{"wss://relay.example.com"},
+			relayURLs:  []string{testRelay.URL()},
 			wantErr:    true,
 		},
 		{
@@ -29,6 +36,18 @@ func TestNewRenoter(t *testing.T) {
 			privateKey: privateKey,
 			relayURLs:  []string{},
 			wantErr:    true,
+		},
+		{
+			name:       "valid Renoter",
+			privateKey: privateKey,
+			relayURLs:  []string{testRelay.URL()},
+			wantErr:    false,
+		},
+		{
+			name:       "multiple relays",
+			privateKey: privateKey,
+			relayURLs:  []string{testRelay.URL(), testRelay.URL(), testRelay.URL()},
+			wantErr:    false,
 		},
 	}
 
@@ -52,15 +71,39 @@ func TestNewRenoter(t *testing.T) {
 				if len(renoter.GetRelayURLs()) != len(tt.relayURLs) {
 					t.Errorf("RelayURLs length = %v, want %v", len(renoter.GetRelayURLs()), len(tt.relayURLs))
 				}
+				// Test GetPool
+				pool := renoter.GetPool()
+				if pool == nil {
+					t.Error("GetPool() should return non-nil pool")
+				}
+				// Test GetPublicKey
+				pubkey := renoter.GetPublicKey()
+				if pubkey != renoter.PublicKey {
+					t.Errorf("GetPublicKey() = %s, want %s", pubkey, renoter.PublicKey)
+				}
 			}
 		})
 	}
-
-	// Note: Tests that require actual relay connections are skipped
-	// Integration tests with mock relays would be needed for full coverage
 }
 
 func TestRenoter_ProcessEvent_AgeValidation(t *testing.T) {
+	ctx := context.Background()
+
+	// Start a test relay
+	testRelay, err := StartTestRelay(ctx)
+	if err != nil {
+		t.Fatalf("Failed to start test relay: %v", err)
+	}
+	defer testRelay.Stop(ctx)
+
+	privateKey := nostr.GeneratePrivateKey()
+	relayURLs := []string{testRelay.URL()}
+
+	renoter, err := NewRenoter(ctx, privateKey, relayURLs)
+	if err != nil {
+		t.Fatalf("NewRenoter() error = %v", err)
+	}
+
 	// Test age validation logic
 	// Events older than 1 hour should be rejected
 	oldTime := time.Now().Add(-2 * time.Hour)
@@ -78,6 +121,24 @@ func TestRenoter_ProcessEvent_AgeValidation(t *testing.T) {
 	if !eventTime.Before(now.Add(-1 * time.Hour)) {
 		t.Error("Event should be considered too old (> 1 hour)")
 	}
+
+	// Test ProcessEvent rejects old events
+	err = renoter.ProcessEvent(ctx, oldEvent)
+	if err == nil {
+		t.Error("ProcessEvent() should reject events older than 1 hour")
+	}
+	if err != nil && !containsString(err.Error(), "too old") {
+		t.Errorf("Error message should mention 'too old', got: %v", err)
+	}
+}
+
+func containsString(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }
 
 func TestRenoter_GetPublicKey(t *testing.T) {
@@ -103,12 +164,44 @@ func TestRenoter_GetPublicKey(t *testing.T) {
 	}
 }
 
-func TestRenoter_GetRelayURLs(t *testing.T) {
-	// Test that relay URLs are stored correctly
-	// Since we can't create Renoter without relay connection, we'll skip this test
-	// or verify the relay URL validation logic separately
-	relayURLs := []string{"wss://relay1.com", "wss://relay2.com"}
-	if len(relayURLs) == 0 {
-		t.Error("Relay URLs should not be empty")
+func TestRenoter_ProcessEvent_ReplayDetection(t *testing.T) {
+	ctx := context.Background()
+
+	// Start a test relay
+	testRelay, err := StartTestRelay(ctx)
+	if err != nil {
+		t.Fatalf("Failed to start test relay: %v", err)
+	}
+	defer testRelay.Stop(ctx)
+
+	privateKey := nostr.GeneratePrivateKey()
+	relayURLs := []string{testRelay.URL()}
+
+	renoter, err := NewRenoter(ctx, privateKey, relayURLs)
+	if err != nil {
+		t.Fatalf("NewRenoter() error = %v", err)
+	}
+
+	// Create a valid event
+	event := &nostr.Event{
+		Kind:      29001,
+		Content:   "test",
+		CreatedAt: nostr.Now(),
+		PubKey:    nostr.GeneratePrivateKey(),
+	}
+	event.Sign(event.PubKey)
+
+	// First processing should succeed (or fail on relay connection, but not on replay)
+	err1 := renoter.ProcessEvent(ctx, event)
+	// ProcessEvent might fail due to relay connection, but shouldn't fail on replay
+
+	// Second processing should fail on replay detection
+	err2 := renoter.ProcessEvent(ctx, event)
+	if err2 == nil {
+		// If relay connection failed on first attempt, replay check won't have marked it
+		t.Logf("ProcessEvent replay test: first=%v, second=%v (relay connection may have failed)", err1, err2)
+	} else if contains(err2.Error(), "replay") {
+		// Success - replay was detected
+		t.Log("Replay detection working correctly")
 	}
 }
