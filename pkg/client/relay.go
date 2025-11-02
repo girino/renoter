@@ -50,7 +50,7 @@ func rejectEventHandler(ctx context.Context, event *nostr.Event, renterPath [][]
 	shuffledPath := ShufflePath(renterPath)
 	logging.DebugMethod("client.relay", "RejectEvent", "Checking event %s for size limits", event.ID)
 
-	// Try to wrap the event - this will check if the outermost 29000 exceeds 4KB
+	// Try to wrap the event - this will check if the outermost 29000 exceeds 8KB
 	wrappedEvent, err := WrapEvent(event, shuffledPath)
 	if err != nil {
 		// WrapEvent returns properly formatted error messages ready for the caller
@@ -58,7 +58,7 @@ func rejectEventHandler(ctx context.Context, event *nostr.Event, renterPath [][]
 		return true, err.Error()
 	}
 
-	// Event is acceptable size - publish the wrapped event (29001 will be larger than 4KB due to encryption, which is expected)
+	// Event is acceptable size - publish the wrapped event (29001 will be larger than 8KB due to encryption, which is expected)
 	logging.DebugMethod("client.relay", "RejectEvent", "Event %s outermost 29000 size OK, publishing wrapped 29001 event", event.ID)
 
 	// Publish wrapped event to all server relays using SimplePool

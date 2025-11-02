@@ -5,8 +5,8 @@ package config
 const WrapperEventKind = 29000
 
 // StandardizedWrapperKind is the ephemeral event kind used for outer standardized size containers.
-// These events are always padded to exactly StandardizedSize (4KB) to hide message size metadata.
+// These events are always padded to exactly StandardizedSize (8KB) to hide message size metadata.
 const StandardizedWrapperKind = 29001
 
-// StandardizedSize is the target size for standardized wrapper events (4KB).
-const StandardizedSize = 4 * 1024 // 4096 bytes
+// StandardizedSize is the target size for standardized wrapper events (8KB).
+const StandardizedSize = 8 * 1024 // 8192 bytes

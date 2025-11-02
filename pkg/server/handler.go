@@ -203,7 +203,7 @@ func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
 			return fmt.Errorf("inner 29000 has no 'p' tag for next Renoter")
 		}
 
-		// Pad inner 29000 to exactly 4KB
+		// Pad inner 29000 to exactly 8KB
 		padded29000, err := padEventToExactSize(&innerEvent, config.StandardizedSize)
 		if err != nil {
 			logging.Error("server.handler.HandleEvent: failed to pad inner 29000 to %d bytes: %v", config.StandardizedSize, err)

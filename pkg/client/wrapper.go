@@ -183,8 +183,8 @@ func WrapEvent(originalEvent *nostr.Event, renterPath [][]byte) (*nostr.Event, e
 		logging.DebugMethod("client.wrapper", "WrapEvent", "Completed wrapping layer %d, proceeding to next layer", i)
 	}
 
-	// After creating all 29000 layers, check if the outermost 29000 exceeds 4KB
-	// before padding. We pad it to exactly 4KB and wrap it in a 29001 container.
+	// After creating all 29000 layers, check if the outermost 29000 exceeds 8KB
+	// before padding. We pad it to exactly 8KB and wrap it in a 29001 container.
 	outermost29000JSON, err := json.Marshal(currentEvent)
 	if err != nil {
 		logging.Error("client.wrapper.WrapEvent: failed to serialize outermost 29000 event for size check: %v", err)
