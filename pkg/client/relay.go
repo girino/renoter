@@ -2,10 +2,12 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/fiatjaf/khatru"
 	"github.com/girino/nostr-lib/logging"
+	"github.com/girino/renoter/internal/config"
 	"github.com/nbd-wtf/go-nostr"
 )
 
@@ -63,16 +65,58 @@ func SetupRelay(relay *khatru.Relay, renterPath [][]byte, serverRelayURLs []stri
 		}
 	}
 
-	// Hook into OnEventSaved to intercept saved events (non-ephemeral)
-	relay.OnEventSaved = append(relay.OnEventSaved, processEvent)
+	// RejectEvent handler: Check size and process events
+	// This runs before the event is accepted, allowing us to reject oversized events
+	relay.RejectEvent = append(relay.RejectEvent, func(ctx context.Context, event *nostr.Event) (reject bool, msg string) {
+		// Shuffle the Renoter path for each event to randomize routing
+		shuffledPath := ShufflePath(renterPath)
+		logging.DebugMethod("client.relay", "RejectEvent", "Checking event %s for size limits", event.ID)
 
-	// Hook into OnEphemeralEvent to intercept ephemeral events
-	relay.OnEphemeralEvent = append(relay.OnEphemeralEvent, processEvent)
+		// Try to wrap the event to check final size
+		wrappedEvent, err := WrapEvent(event, shuffledPath)
+		if err != nil {
+			// Check if wrapping failed due to size limit
+			errStr := err.Error()
+			if contains(errStr, "exceeds target size") || contains(errStr, "exceeds maximum") {
+				logging.Error("client.relay.RejectEvent: event %s would exceed %d bytes after wrapping: %v", event.ID, config.StandardizedSize, err)
+				return true, fmt.Sprintf("event too large: wrapped message would exceed %d bytes", config.StandardizedSize)
+			}
+			// Other wrapping errors - log but don't reject (let it go through normal processing)
+			logging.Error("client.relay.RejectEvent: failed to wrap event %s: %v", event.ID, err)
+			return false, ""
+		}
+
+		// Check final 29001 event size after encryption
+		// Serialize the final wrapped event to check its actual size
+		wrappedEventJSON, err := json.Marshal(wrappedEvent)
+		if err != nil {
+			logging.Error("client.relay.RejectEvent: failed to serialize wrapped event %s: %v", event.ID, err)
+			return false, "" // Don't reject, but won't be processed either
+		}
+		finalSize := len(wrappedEventJSON)
+
+		if finalSize > config.StandardizedSize {
+			logging.Error("client.relay.RejectEvent: event %s wrapped size %d bytes exceeds maximum %d bytes", event.ID, finalSize, config.StandardizedSize)
+			return true, fmt.Sprintf("event too large: wrapped message size %d bytes exceeds maximum %d bytes", finalSize, config.StandardizedSize)
+		}
+
+		// Event is acceptable size - process it (wrap and forward)
+		logging.DebugMethod("client.relay", "RejectEvent", "Event %s size OK (%d bytes), processing", event.ID, finalSize)
+		processEvent(ctx, event)
+
+		// Don't reject - return false so event continues (though it won't be stored since StoreEvent is not set)
+		return false, ""
+	})
 
 	// Do NOT set StoreEvent - khatru doesn't save by default
-	// Events will be intercepted via OnEventSaved/OnEphemeralEvent, wrapped, and forwarded
+	// Events will be intercepted via RejectEvent, checked for size, wrapped, and forwarded
 	// But won't be stored locally (unless StoreEvent is set elsewhere)
 
-	logging.Info("client.relay.SetupRelay: Successfully configured khatru relay with event interception via OnEventSaved/OnEphemeralEvent (no local storage)")
+	logging.Info("client.relay.SetupRelay: Successfully configured khatru relay with event processing via RejectEvent (size checking and forwarding, no local storage)")
 	return nil
+}
+
+// contains is a helper function to check if a string contains a substring (case-insensitive).
+func contains(s, substr string) bool {
+	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }
