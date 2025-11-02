@@ -97,6 +97,8 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
 
       - name: Extract version and tag info
         id: version
@@ -134,6 +136,7 @@ jobs:
         with:
           context: .
           file: ./Dockerfile.client
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
           push: true
           tags: |
             ghcr.io/${{ github.repository }}/renoter-client:${{ steps.version.outputs.docker_tag }}
@@ -146,6 +149,7 @@ jobs:
         with:
           context: .
           file: ./Dockerfile.server
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
           push: true
           tags: |
             ghcr.io/${{ github.repository }}/renoter-server:${{ steps.version.outputs.docker_tag }}
