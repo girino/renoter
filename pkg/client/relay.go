@@ -34,7 +34,9 @@ func SetupRelay(relay *khatru.Relay, renterPath [][]byte, serverRelayURLs []stri
 
 	// RejectEvent handler: Check size and process events
 	// This runs before the event is accepted, allowing us to reject oversized events
-	relay.RejectEvent = append(relay.RejectEvent, makeRejectEventHandler(renterPath, serverPool, serverRelayURLs))
+	relay.RejectEvent = append(relay.RejectEvent, func(ctx context.Context, event *nostr.Event) (reject bool, msg string) {
+		return rejectEventHandler(ctx, event, renterPath, serverPool, serverRelayURLs)
+	})
 
 	// Do NOT set StoreEvent - khatru doesn't save by default
 	// Events will be intercepted via RejectEvent, checked for size, wrapped, and forwarded
@@ -44,69 +46,66 @@ func SetupRelay(relay *khatru.Relay, renterPath [][]byte, serverRelayURLs []stri
 	return nil
 }
 
-// makeRejectEventHandler creates a RejectEvent handler function that checks event size
-// and processes acceptable events by wrapping and forwarding them.
-func makeRejectEventHandler(renterPath [][]byte, serverPool *nostr.SimplePool, serverRelayURLs []string) func(ctx context.Context, event *nostr.Event) (reject bool, msg string) {
-	return func(ctx context.Context, event *nostr.Event) (reject bool, msg string) {
-		// Shuffle the Renoter path for each event to randomize routing
-		// This improves privacy by ensuring events don't always follow the same path
-		shuffledPath := ShufflePath(renterPath)
-		logging.DebugMethod("client.relay", "RejectEvent", "Checking event %s for size limits", event.ID)
+// rejectEventHandler checks event size and processes acceptable events by wrapping and forwarding them.
+func rejectEventHandler(ctx context.Context, event *nostr.Event, renterPath [][]byte, serverPool *nostr.SimplePool, serverRelayURLs []string) (reject bool, msg string) {
+	// Shuffle the Renoter path for each event to randomize routing
+	// This improves privacy by ensuring events don't always follow the same path
+	shuffledPath := ShufflePath(renterPath)
+	logging.DebugMethod("client.relay", "RejectEvent", "Checking event %s for size limits", event.ID)
 
-		// Try to wrap the event to check final size
-		wrappedEvent, err := WrapEvent(event, shuffledPath)
-		if err != nil {
-			// Check if wrapping failed due to size limit
-			errStr := err.Error()
-			if contains(errStr, "exceeds target size") || contains(errStr, "exceeds maximum") {
-				logging.Error("client.relay.RejectEvent: event %s would exceed %d bytes after wrapping: %v", event.ID, config.StandardizedSize, err)
-				return true, fmt.Sprintf("event too large: wrapped message would exceed %d bytes", config.StandardizedSize)
-			}
-			// Other wrapping errors - log but don't reject (let it go through normal processing)
-			logging.Error("client.relay.RejectEvent: failed to wrap event %s: %v", event.ID, err)
-			return false, ""
+	// Try to wrap the event to check final size
+	wrappedEvent, err := WrapEvent(event, shuffledPath)
+	if err != nil {
+		// Check if wrapping failed due to size limit
+		errStr := err.Error()
+		if contains(errStr, "exceeds target size") || contains(errStr, "exceeds maximum") {
+			logging.Error("client.relay.RejectEvent: event %s would exceed %d bytes after wrapping: %v", event.ID, config.StandardizedSize, err)
+			return true, fmt.Sprintf("event too large: wrapped message would exceed %d bytes", config.StandardizedSize)
 		}
-
-		// Check final 29001 event size after encryption
-		// Serialize the final wrapped event to check its actual size
-		wrappedEventJSON, err := json.Marshal(wrappedEvent)
-		if err != nil {
-			logging.Error("client.relay.RejectEvent: failed to serialize wrapped event %s: %v", event.ID, err)
-			return false, "" // Don't reject, but won't be processed either
-		}
-		finalSize := len(wrappedEventJSON)
-
-		if finalSize > config.StandardizedSize {
-			logging.Error("client.relay.RejectEvent: event %s wrapped size %d bytes exceeds maximum %d bytes", event.ID, finalSize, config.StandardizedSize)
-			return true, fmt.Sprintf("event too large: wrapped message size %d bytes exceeds maximum %d bytes", finalSize, config.StandardizedSize)
-		}
-
-		// Event is acceptable size - publish the wrapped event
-		logging.DebugMethod("client.relay", "RejectEvent", "Event %s size OK (%d bytes), publishing wrapped event", event.ID, finalSize)
-
-		// Publish wrapped event to all server relays using SimplePool
-		publishResults := serverPool.PublishMany(ctx, serverRelayURLs, *wrappedEvent)
-
-		// Collect results
-		successCount := 0
-		for result := range publishResults {
-			if result.Error != nil {
-				logging.Error("client.relay.RejectEvent: failed to publish wrapped event %s to relay %s: %v", wrappedEvent.ID, result.RelayURL, result.Error)
-			} else {
-				successCount++
-				logging.DebugMethod("client.relay", "RejectEvent", "Successfully published wrapped event %s to relay %s", wrappedEvent.ID, result.RelayURL)
-			}
-		}
-
-		if successCount == 0 {
-			logging.Error("client.relay.RejectEvent: Failed to publish wrapped event %s to any relay", wrappedEvent.ID)
-			// Don't reject the original event - wrapping/publishing failure shouldn't block the event
-			// The sender will see the event was accepted even if forwarding failed
-		}
-
-		// Don't reject - return false so event continues (though it won't be stored since StoreEvent is not set)
+		// Other wrapping errors - log but don't reject (let it go through normal processing)
+		logging.Error("client.relay.RejectEvent: failed to wrap event %s: %v", event.ID, err)
 		return false, ""
 	}
+
+	// Check final 29001 event size after encryption
+	// Serialize the final wrapped event to check its actual size
+	wrappedEventJSON, err := json.Marshal(wrappedEvent)
+	if err != nil {
+		logging.Error("client.relay.RejectEvent: failed to serialize wrapped event %s: %v", event.ID, err)
+		return false, "" // Don't reject, but won't be processed either
+	}
+	finalSize := len(wrappedEventJSON)
+
+	if finalSize > config.StandardizedSize {
+		logging.Error("client.relay.RejectEvent: event %s wrapped size %d bytes exceeds maximum %d bytes", event.ID, finalSize, config.StandardizedSize)
+		return true, fmt.Sprintf("event too large: wrapped message size %d bytes exceeds maximum %d bytes", finalSize, config.StandardizedSize)
+	}
+
+	// Event is acceptable size - publish the wrapped event
+	logging.DebugMethod("client.relay", "RejectEvent", "Event %s size OK (%d bytes), publishing wrapped event", event.ID, finalSize)
+
+	// Publish wrapped event to all server relays using SimplePool
+	publishResults := serverPool.PublishMany(ctx, serverRelayURLs, *wrappedEvent)
+
+	// Collect results
+	successCount := 0
+	for result := range publishResults {
+		if result.Error != nil {
+			logging.Error("client.relay.RejectEvent: failed to publish wrapped event %s to relay %s: %v", wrappedEvent.ID, result.RelayURL, result.Error)
+		} else {
+			successCount++
+			logging.DebugMethod("client.relay", "RejectEvent", "Successfully published wrapped event %s to relay %s", wrappedEvent.ID, result.RelayURL)
+		}
+	}
+
+	if successCount == 0 {
+		logging.Error("client.relay.RejectEvent: Failed to publish wrapped event %s to any relay", wrappedEvent.ID)
+		// Don't reject the original event - wrapping/publishing failure shouldn't block the event
+		// The sender will see the event was accepted even if forwarding failed
+	}
+
+	// Don't reject - return false so event continues (though it won't be stored since StoreEvent is not set)
+	return false, ""
 }
 
 // contains is a helper function to check if a string contains a substring (case-insensitive).
