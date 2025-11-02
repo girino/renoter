@@ -183,9 +183,21 @@ func WrapEvent(originalEvent *nostr.Event, renterPath [][]byte) (*nostr.Event, e
 		logging.DebugMethod("client.wrapper", "WrapEvent", "Completed wrapping layer %d, proceeding to next layer", i)
 	}
 
-	// After creating all 29000 layers, pad the outermost 29000 to exactly 4KB
-	// and wrap it in a 29001 standardized container addressed to the first Renoter
-	logging.DebugMethod("client.wrapper", "WrapEvent", "Padding outermost 29000 event to %d bytes", config.StandardizedSize)
+	// After creating all 29000 layers, check if the outermost 29000 exceeds 4KB
+	// before padding. We pad it to exactly 4KB and wrap it in a 29001 container.
+	outermost29000JSON, err := json.Marshal(currentEvent)
+	if err != nil {
+		logging.Error("client.wrapper.WrapEvent: failed to serialize outermost 29000 event for size check: %v", err)
+		return nil, fmt.Errorf("failed to serialize outermost 29000 event: %w", err)
+	}
+	outermost29000Size := len(outermost29000JSON)
+
+	if outermost29000Size > config.StandardizedSize {
+		logging.Error("client.wrapper.WrapEvent: outermost 29000 event size %d bytes exceeds maximum %d bytes", outermost29000Size, config.StandardizedSize)
+		return nil, fmt.Errorf("outermost 29000 event size %d bytes exceeds maximum %d bytes", outermost29000Size, config.StandardizedSize)
+	}
+
+	logging.DebugMethod("client.wrapper", "WrapEvent", "Padding outermost 29000 event to %d bytes (current size: %d)", config.StandardizedSize, outermost29000Size)
 	padded29000, err := padEventToExactSize(currentEvent, config.StandardizedSize)
 	if err != nil {
 		logging.Error("client.wrapper.WrapEvent: failed to pad outermost 29000 event: %v", err)

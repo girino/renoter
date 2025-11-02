@@ -136,4 +136,3 @@ func TestWrapEvent_ReverseOrder(t *testing.T) {
 		t.Errorf("Wrapper 'p' tag should contain first Renoter's pubkey")
 	}
 }
-

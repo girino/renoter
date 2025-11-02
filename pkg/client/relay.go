@@ -53,11 +53,15 @@ func rejectEventHandler(ctx context.Context, event *nostr.Event, renterPath [][]
 	shuffledPath := ShufflePath(renterPath)
 	logging.DebugMethod("client.relay", "RejectEvent", "Checking event %s for size limits", event.ID)
 
-	// Try to wrap the event to check final size
+	// Try to wrap the event - this will check if the outermost 29000 exceeds 4KB
 	wrappedEvent, err := WrapEvent(event, shuffledPath)
 	if err != nil {
 		// Check if wrapping failed due to size limit
 		errStr := err.Error()
+		if contains(errStr, "outermost 29000 event size") && contains(errStr, "exceeds maximum") {
+			logging.Error("client.relay.RejectEvent: event %s outermost 29000 would exceed %d bytes: %v", event.ID, config.StandardizedSize, err)
+			return true, fmt.Sprintf("event too large: outermost 29000 event exceeds %d bytes", config.StandardizedSize)
+		}
 		if contains(errStr, "exceeds target size") || contains(errStr, "exceeds maximum") {
 			logging.Error("client.relay.RejectEvent: event %s would exceed %d bytes after wrapping: %v", event.ID, config.StandardizedSize, err)
 			return true, fmt.Sprintf("event too large: wrapped message would exceed %d bytes", config.StandardizedSize)
@@ -67,22 +71,8 @@ func rejectEventHandler(ctx context.Context, event *nostr.Event, renterPath [][]
 		return false, ""
 	}
 
-	// Check final 29001 event size after encryption
-	// Serialize the final wrapped event to check its actual size
-	wrappedEventJSON, err := json.Marshal(wrappedEvent)
-	if err != nil {
-		logging.Error("client.relay.RejectEvent: failed to serialize wrapped event %s: %v", event.ID, err)
-		return false, "" // Don't reject, but won't be processed either
-	}
-	finalSize := len(wrappedEventJSON)
-
-	if finalSize > config.StandardizedSize {
-		logging.Error("client.relay.RejectEvent: event %s wrapped size %d bytes exceeds maximum %d bytes", event.ID, finalSize, config.StandardizedSize)
-		return true, fmt.Sprintf("event too large: wrapped message size %d bytes exceeds maximum %d bytes", finalSize, config.StandardizedSize)
-	}
-
-	// Event is acceptable size - publish the wrapped event
-	logging.DebugMethod("client.relay", "RejectEvent", "Event %s size OK (%d bytes), publishing wrapped event", event.ID, finalSize)
+	// Event is acceptable size - publish the wrapped event (29001 will be larger than 4KB due to encryption, which is expected)
+	logging.DebugMethod("client.relay", "RejectEvent", "Event %s outermost 29000 size OK, publishing wrapped 29001 event", event.ID)
 
 	// Publish wrapped event to all server relays using SimplePool
 	publishResults := serverPool.PublishMany(ctx, serverRelayURLs, *wrappedEvent)
