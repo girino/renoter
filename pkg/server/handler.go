@@ -2,15 +2,85 @@ package server
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 
+	"github.com/girino/renoter/internal/config"
 	"github.com/girino/nostr-lib/logging"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip44"
 )
 
-// HandleEvent handles a wrapped event by decrypting it and forwarding the inner event.
+// padEventToExactSize is a helper function to pad events to exact size (same as client version).
+func padEventToExactSize(event *nostr.Event, targetSize int) (*nostr.Event, error) {
+	// Create a copy to avoid modifying the original
+	paddedEvent := *event
+	if paddedEvent.Tags == nil {
+		paddedEvent.Tags = nostr.Tags{}
+	}
+
+	// Serialize event to get current size (without padding)
+	eventJSON, err := json.Marshal(&paddedEvent)
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize event for padding: %w", err)
+	}
+	currentSize := len(eventJSON)
+
+	// Calculate padding tag base size: ["padding",""]
+	testEventWithEmptyPadding := *event
+	if testEventWithEmptyPadding.Tags == nil {
+		testEventWithEmptyPadding.Tags = nostr.Tags{}
+	}
+	testEventWithEmptyPadding.Tags = append(testEventWithEmptyPadding.Tags, nostr.Tag{"padding", ""})
+	testJSONWithEmptyPadding, _ := json.Marshal(&testEventWithEmptyPadding)
+	tagBaseSize := len(testJSONWithEmptyPadding) - currentSize
+	logging.DebugMethod("server.handler", "padEventToExactSize", "Padding tag base size: %d bytes", tagBaseSize)
+
+	// Calculate total size including padding tag base
+	totalSize := currentSize + tagBaseSize
+
+	// Check if base event is too large
+	if totalSize > targetSize {
+		logging.Error("server.handler.padEventToExactSize: event base size %d (with tag overhead %d) exceeds target size %d", currentSize, tagBaseSize, targetSize)
+		return nil, fmt.Errorf("event base size %d exceeds target size %d", totalSize, targetSize)
+	}
+
+	// Calculate exact padding needed
+	paddingNeeded := targetSize - totalSize
+
+	// Generate padding string of exactly the needed length
+	paddingBytes := make([]byte, (paddingNeeded+1)/2) // Round up
+	if len(paddingBytes) > 0 {
+		if _, err := rand.Read(paddingBytes); err != nil {
+			return nil, fmt.Errorf("failed to generate random padding: %w", err)
+		}
+	}
+	paddingString := hex.EncodeToString(paddingBytes)
+
+	// Truncate to exact length needed
+	if len(paddingString) > paddingNeeded {
+		paddingString = paddingString[:paddingNeeded]
+	}
+
+	// Add padding tag
+	paddedEvent.Tags = append(paddedEvent.Tags, nostr.Tag{"padding", paddingString})
+
+	// Verify final size
+	finalJSON, _ := json.Marshal(&paddedEvent)
+	if len(finalJSON) != targetSize {
+		logging.Error("server.handler.padEventToExactSize: padded event size %d does not match target %d", len(finalJSON), targetSize)
+		return nil, fmt.Errorf("padded event size %d does not match target %d", len(finalJSON), targetSize)
+	}
+
+	logging.DebugMethod("server.handler", "padEventToExactSize", "Added padding: %d bytes needed, event size: %d -> target: %d", paddingNeeded, currentSize, targetSize)
+
+	return &paddedEvent, nil
+}
+
+// HandleEvent handles a standardized wrapper event (29001) by decrypting it,
+// processing the inner 29000 event, and either re-wrapping or publishing the final event.
 func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
 	// Verify signature (already done in ProcessEvent, but double-check)
 	valid, err := event.CheckSignature()
@@ -23,42 +93,70 @@ func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
 		return fmt.Errorf("invalid signature for event %s", event.ID)
 	}
 
-	// Decrypt the content using this Renoter's private key
-	// First, we need to get the sender's public key from the event
+	// Decrypt the 29001 content using this Renoter's private key
 	senderPubkey := event.PubKey
-	logging.DebugMethod("server.handler", "HandleEvent", "Sender pubkey: %s (first 16 chars)", senderPubkey[:16])
+	logging.DebugMethod("server.handler", "HandleEvent", "Decrypting 29001 event, sender pubkey: %s (first 16 chars)", senderPubkey[:16])
 
-	// Generate conversation key using sender's public key and our private key
-	logging.DebugMethod("server.handler", "HandleEvent", "Generating conversation key")
 	conversationKey, err := nip44.GenerateConversationKey(senderPubkey, r.PrivateKey)
 	if err != nil {
-		logging.Error("server.handler.HandleEvent: failed to generate conversation key for event %s: %v", event.ID, err)
+		logging.Error("server.handler.HandleEvent: failed to generate conversation key for 29001 %s: %v", event.ID, err)
 		return fmt.Errorf("failed to generate conversation key: %w", err)
 	}
-	logging.DebugMethod("server.handler", "HandleEvent", "Generated conversation key")
 
-	// Decrypt the content
-	logging.DebugMethod("server.handler", "HandleEvent", "Decrypting content, ciphertext length: %d bytes", len(event.Content))
-	plaintext, err := nip44.Decrypt(event.Content, conversationKey)
+	plaintext29001, err := nip44.Decrypt(event.Content, conversationKey)
 	if err != nil {
-		logging.Error("server.handler.HandleEvent: failed to decrypt content for event %s: %v", event.ID, err)
-		return fmt.Errorf("failed to decrypt content: %w", err)
+		logging.Error("server.handler.HandleEvent: failed to decrypt 29001 content for event %s: %v", event.ID, err)
+		return fmt.Errorf("failed to decrypt 29001 content: %w", err)
 	}
-	logging.DebugMethod("server.handler", "HandleEvent", "Decrypted content, plaintext length: %d bytes", len(plaintext))
 
-	// Deserialize the inner event
-	logging.DebugMethod("server.handler", "HandleEvent", "Deserializing inner event")
-	var innerEvent nostr.Event
-	err = json.Unmarshal([]byte(plaintext), &innerEvent)
+	// Deserialize the inner 29000 event
+	var inner29000 nostr.Event
+	err = json.Unmarshal([]byte(plaintext29001), &inner29000)
 	if err != nil {
-		logging.Error("server.handler.HandleEvent: failed to deserialize inner event for event %s: %v", event.ID, err)
+		logging.Error("server.handler.HandleEvent: failed to deserialize inner 29000 event for event %s: %v", event.ID, err)
+		return fmt.Errorf("failed to deserialize inner 29000 event: %w", err)
+	}
+
+	// Verify the inner 29000 is addressed to us
+	// Check "p" tag contains our pubkey
+	isAddressedToUs := false
+	for _, tag := range inner29000.Tags {
+		if len(tag) >= 2 && tag[0] == "p" && tag[1] == r.PublicKey {
+			isAddressedToUs = true
+			break
+		}
+	}
+
+	if !isAddressedToUs {
+		logging.DebugMethod("server.handler", "HandleEvent", "Inner 29000 event not addressed to us, silently dropping")
+		return nil // Silently drop
+	}
+
+	logging.DebugMethod("server.handler", "HandleEvent", "Inner 29000 event is addressed to us, decrypting")
+
+	// Decrypt the 29000 event
+	sender29000Pubkey := inner29000.PubKey
+	conversationKey29000, err := nip44.GenerateConversationKey(sender29000Pubkey, r.PrivateKey)
+	if err != nil {
+		logging.Error("server.handler.HandleEvent: failed to generate conversation key for inner 29000: %v", err)
+		return fmt.Errorf("failed to generate conversation key for 29000: %w", err)
+	}
+
+	plaintext29000, err := nip44.Decrypt(inner29000.Content, conversationKey29000)
+	if err != nil {
+		logging.Error("server.handler.HandleEvent: failed to decrypt inner 29000 content: %v", err)
+		return fmt.Errorf("failed to decrypt inner 29000 content: %w", err)
+	}
+
+	// Deserialize the content inside 29000
+	var innerEvent nostr.Event
+	err = json.Unmarshal([]byte(plaintext29000), &innerEvent)
+	if err != nil {
+		logging.Error("server.handler.HandleEvent: failed to deserialize inner event: %v", err)
 		return fmt.Errorf("failed to deserialize inner event: %w", err)
 	}
 
-	// Remove padding tags from inner event before publishing
-	// The client padded the event before encryption, but kept the original ID and signature.
-	// Removing padding tags restores the original event structure, so the signature is valid again.
-	logging.DebugMethod("server.handler", "HandleEvent", "Removing padding tags from inner event before publishing")
+	// Remove padding from inner event
 	originalTags := innerEvent.Tags
 	innerEvent.Tags = nostr.Tags{}
 	for _, tag := range originalTags {
@@ -67,16 +165,14 @@ func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
 		}
 	}
 
-	// After removing padding, verify the event ID matches the original structure
+	// Verify ID and signature after removing padding
 	originalID := innerEvent.ID
 	calculatedID := innerEvent.GetID()
 	if originalID != calculatedID {
-		// ID doesn't match - this shouldn't happen if padding was done correctly
 		logging.Error("server.handler.HandleEvent: inner event ID mismatch after removing padding: original=%s, calculated=%s", originalID, calculatedID)
 		return fmt.Errorf("inner event ID mismatch after removing padding")
 	}
 
-	// Verify signature is valid for the unpadded event
 	if innerEvent.Sig != "" {
 		valid, err := innerEvent.CheckSignature()
 		if err != nil {
@@ -87,65 +183,139 @@ func (r *Renoter) HandleEvent(ctx context.Context, event *nostr.Event) error {
 			logging.Error("server.handler.HandleEvent: invalid signature for inner event %s", innerEvent.ID)
 			return fmt.Errorf("invalid signature for inner event")
 		}
-		logging.DebugMethod("server.handler", "HandleEvent", "Inner event signature verified: %s", innerEvent.ID)
-	} else {
-		logging.DebugMethod("server.handler", "HandleEvent", "Inner event has no signature (unsigned event)")
 	}
 
-	// Note: The wrapper event (outer event) was already checked for replay attacks in ProcessEvent
-	// ProcessEvent ensures we don't process the same wrapper event twice, so HandleEvent
-	// will only be called once per wrapper event. We don't need additional replay checks here.
+	// Check if inner event is another 29000 (next in path) or final event
+	if innerEvent.Kind == config.WrapperEventKind {
+		logging.DebugMethod("server.handler", "HandleEvent", "Inner event is another 29000, re-wrapping for next Renoter")
 
-	// Check if this is a final event or another wrapper
-	if innerEvent.Kind == 29000 {
-		logging.DebugMethod("server.handler", "HandleEvent", "Inner event is another wrapper (kind 29000), forwarding to next Renoter")
-	}
-
-	// Publish inner event to all relays using SimplePool
-	// IMPORTANT: This should only be called once per inner event
-	relayURLs := r.GetRelayURLs()
-	publishResults := r.GetPool().PublishMany(ctx, relayURLs, innerEvent)
-	logging.DebugMethod("server.handler", "HandleEvent", "PublishMany started for inner event %s, collecting results...", innerEvent.ID)
-
-	// Collect results
-	successCount := 0
-	failedRelays := []string{}
-	for result := range publishResults {
-		if result.Error != nil {
-			failedRelays = append(failedRelays, result.RelayURL)
-			logging.Error("server.handler.HandleEvent: failed to publish inner event %s to relay %s: %v", innerEvent.ID, result.RelayURL, result.Error)
-		} else {
-			successCount++
-			logging.DebugMethod("server.handler", "HandleEvent", "Successfully published inner event %s to relay %s", innerEvent.ID, result.RelayURL)
+		// Get next Renoter from "p" tag of inner 29000
+		nextRenoterPubkey := ""
+		for _, tag := range innerEvent.Tags {
+			if len(tag) >= 2 && tag[0] == "p" {
+				nextRenoterPubkey = tag[1]
+				break
+			}
 		}
-	}
 
-	if successCount == 0 {
-		logging.Error("server.handler.HandleEvent: Failed to publish inner event %s to any relay. Failed relays: %v", innerEvent.ID, failedRelays)
-		return fmt.Errorf("failed to publish inner event %s to any relay", innerEvent.ID)
-	}
+		if nextRenoterPubkey == "" {
+			logging.Error("server.handler.HandleEvent: inner 29000 has no 'p' tag for next Renoter")
+			return fmt.Errorf("inner 29000 has no 'p' tag for next Renoter")
+		}
 
-	return nil
+		// Pad inner 29000 to exactly 4KB
+		padded29000, err := padEventToExactSize(&innerEvent, config.StandardizedSize)
+		if err != nil {
+			logging.Error("server.handler.HandleEvent: failed to pad inner 29000 to %d bytes: %v", config.StandardizedSize, err)
+			return fmt.Errorf("failed to pad inner 29000: %w", err)
+		}
+
+		// Serialize padded 29000
+		padded29000JSON, err := json.Marshal(padded29000)
+		if err != nil {
+			logging.Error("server.handler.HandleEvent: failed to serialize padded 29000: %v", err)
+			return fmt.Errorf("failed to serialize padded 29000: %w", err)
+		}
+
+		// Generate key for new 29001
+		sk29001 := nostr.GeneratePrivateKey()
+		pubkey29001, err := nostr.GetPublicKey(sk29001)
+		if err != nil {
+			logging.Error("server.handler.HandleEvent: failed to get public key for 29001: %v", err)
+			return fmt.Errorf("failed to get public key: %w", err)
+		}
+
+		// Encrypt for next Renoter
+		conversationKey29001, err := nip44.GenerateConversationKey(nextRenoterPubkey, sk29001)
+		if err != nil {
+			logging.Error("server.handler.HandleEvent: failed to generate conversation key for next Renoter: %v", err)
+			return fmt.Errorf("failed to generate conversation key: %w", err)
+		}
+
+		ciphertext29001, err := nip44.Encrypt(string(padded29000JSON), conversationKey29001)
+		if err != nil {
+			logging.Error("server.handler.HandleEvent: failed to encrypt for 29001: %v", err)
+			return fmt.Errorf("failed to encrypt for 29001: %w", err)
+		}
+
+		// Create new 29001 container
+		new29001 := &nostr.Event{
+			Kind:      config.StandardizedWrapperKind,
+			Content:   ciphertext29001,
+			CreatedAt: nostr.Now(),
+			PubKey:    pubkey29001,
+			Tags: nostr.Tags{
+				{"p", nextRenoterPubkey},
+			},
+		}
+
+		new29001.ID = new29001.GetID()
+		if !new29001.CheckID() {
+			logging.Error("server.handler.HandleEvent: new 29001 ID validation failed")
+			return fmt.Errorf("invalid new 29001 event ID")
+		}
+
+		err = new29001.Sign(sk29001)
+		if err != nil {
+			logging.Error("server.handler.HandleEvent: failed to sign new 29001: %v", err)
+			return fmt.Errorf("failed to sign new 29001: %w", err)
+		}
+
+		// Publish new 29001
+		relayURLs := r.GetRelayURLs()
+		publishResults := r.GetPool().PublishMany(ctx, relayURLs, *new29001)
+		successCount := 0
+		for result := range publishResults {
+			if result.Error == nil {
+				successCount++
+			}
+		}
+
+		if successCount == 0 {
+			return fmt.Errorf("failed to publish new 29001 to any relay")
+		}
+
+		logging.Info("server.handler.HandleEvent: Successfully re-wrapped and published 29001 for next Renoter")
+		return nil
+	} else {
+		// Final event - publish as-is
+		logging.DebugMethod("server.handler", "HandleEvent", "Inner event is final event (kind %d), publishing", innerEvent.Kind)
+		relayURLs := r.GetRelayURLs()
+		publishResults := r.GetPool().PublishMany(ctx, relayURLs, innerEvent)
+		successCount := 0
+		for result := range publishResults {
+			if result.Error == nil {
+				successCount++
+			}
+		}
+
+		if successCount == 0 {
+			return fmt.Errorf("failed to publish final event to any relay")
+		}
+
+		logging.Info("server.handler.HandleEvent: Successfully published final event")
+		return nil
+	}
 }
 
-// SubscribeToWrappedEvents subscribes to wrapper events (kind 29000) on multiple relays.
+// SubscribeToWrappedEvents subscribes to standardized wrapper events (kind 29001) on multiple relays.
 func (r *Renoter) SubscribeToWrappedEvents(ctx context.Context) error {
 	relayURLs := r.GetRelayURLs()
 
-	// Create filter for wrapper events addressed to this Renoter
-	// Filter by events with kind 29000 that have our pubkey in a "p" tag
+	// Create filter for standardized wrapper events addressed to this Renoter
+	// Filter by events with kind 29001 that have our pubkey in a "p" tag
 	filter := nostr.Filter{
-		Kinds: []int{29000}, // Wrapper event kind
+		Kinds: []int{config.StandardizedWrapperKind}, // Standardized wrapper event kind (29001)
 		Tags: nostr.TagMap{
 			"p": []string{r.PublicKey}, // Only events with our pubkey in "p" tag
 		},
 	}
 
-	logging.DebugMethod("server.handler", "SubscribeToWrappedEvents", "Creating subscription filter: kind=29000, p tag=%s (first 16 chars)", r.PublicKey[:16])
+	logging.DebugMethod("server.handler", "SubscribeToWrappedEvents", "Creating subscription filter: kind=29001, p tag=%s (first 16 chars)", r.PublicKey[:16])
 
 	// Subscribe to all relays using SimplePool
 	events := r.GetPool().SubscribeMany(ctx, relayURLs, filter)
-	logging.Info("server.handler.SubscribeToWrappedEvents: Successfully subscribed to wrapper events (kind 29000) with our pubkey in 'p' tag on %d relays", len(relayURLs))
+	logging.Info("server.handler.SubscribeToWrappedEvents: Successfully subscribed to standardized wrapper events (kind 29001) with our pubkey in 'p' tag on %d relays", len(relayURLs))
 
 	// Handle incoming events from all relays
 	// Track processed events to avoid processing the same event multiple times from different relays

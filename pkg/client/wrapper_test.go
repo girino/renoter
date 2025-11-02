@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/girino/renoter/internal/config"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip19"
 )
@@ -79,8 +80,9 @@ func TestWrapEvent(t *testing.T) {
 			}
 
 			// Verify wrapper event properties
-			if wrapped.Kind != 29000 {
-				t.Errorf("WrapEvent() wrapper kind = %v, want 29000", wrapped.Kind)
+			// The final event is now a 29001 standardized container
+			if wrapped.Kind != config.StandardizedWrapperKind {
+				t.Errorf("WrapEvent() wrapper kind = %v, want %d", wrapped.Kind, config.StandardizedWrapperKind)
 			}
 
 			// Verify wrapper event has correct structure

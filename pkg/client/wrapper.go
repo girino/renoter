@@ -15,6 +15,74 @@ import (
 
 const MaxWrappedEventSize = 32 * 1024 // 32KB maximum size for wrapped events after encryption
 
+// padEventToExactSize adds padding tags to an event to make its serialized size exactly targetSize.
+// Returns a new event with padding tags added, or an error if the base event is too large.
+// Accounts for padding tag overhead before calculating padding needed.
+func padEventToExactSize(event *nostr.Event, targetSize int) (*nostr.Event, error) {
+	// Create a copy to avoid modifying the original
+	paddedEvent := *event
+	if paddedEvent.Tags == nil {
+		paddedEvent.Tags = nostr.Tags{}
+	}
+
+	// Serialize event to get current size (without padding)
+	eventJSON, err := json.Marshal(&paddedEvent)
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize event for padding: %w", err)
+	}
+	currentSize := len(eventJSON)
+
+	// Calculate padding tag base size: ["padding",""]
+	testEventWithEmptyPadding := *event
+	if testEventWithEmptyPadding.Tags == nil {
+		testEventWithEmptyPadding.Tags = nostr.Tags{}
+	}
+	testEventWithEmptyPadding.Tags = append(testEventWithEmptyPadding.Tags, nostr.Tag{"padding", ""})
+	testJSONWithEmptyPadding, _ := json.Marshal(&testEventWithEmptyPadding)
+	tagBaseSize := len(testJSONWithEmptyPadding) - currentSize
+	logging.DebugMethod("client.wrapper", "padEventToExactSize", "Padding tag base size: %d bytes", tagBaseSize)
+
+	// Calculate total size including padding tag base
+	totalSize := currentSize + tagBaseSize
+
+	// Check if base event is too large
+	if totalSize > targetSize {
+		logging.Error("client.wrapper.padEventToExactSize: event base size %d (with tag overhead %d) exceeds target size %d", currentSize, tagBaseSize, targetSize)
+		return nil, fmt.Errorf("event base size %d exceeds target size %d", totalSize, targetSize)
+	}
+
+	// Calculate exact padding needed
+	paddingNeeded := targetSize - totalSize
+
+	// Generate padding string of exactly the needed length
+	paddingBytes := make([]byte, (paddingNeeded+1)/2) // Round up
+	if len(paddingBytes) > 0 {
+		if _, err := rand.Read(paddingBytes); err != nil {
+			return nil, fmt.Errorf("failed to generate random padding: %w", err)
+		}
+	}
+	paddingString := hex.EncodeToString(paddingBytes)
+
+	// Truncate to exact length needed
+	if len(paddingString) > paddingNeeded {
+		paddingString = paddingString[:paddingNeeded]
+	}
+
+	// Add padding tag
+	paddedEvent.Tags = append(paddedEvent.Tags, nostr.Tag{"padding", paddingString})
+
+	// Verify final size
+	finalJSON, _ := json.Marshal(&paddedEvent)
+	if len(finalJSON) != targetSize {
+		logging.Error("client.wrapper.padEventToExactSize: padded event size %d does not match target %d", len(finalJSON), targetSize)
+		return nil, fmt.Errorf("padded event size %d does not match target %d", len(finalJSON), targetSize)
+	}
+
+	logging.DebugMethod("client.wrapper", "padEventToExactSize", "Added padding: %d bytes needed, event size: %d -> target: %d", paddingNeeded, currentSize, targetSize)
+
+	return &paddedEvent, nil
+}
+
 // padEventToMultipleOf32 adds padding tags to an event to make its serialized size a multiple of 32 bytes.
 // Returns a new event with padding tags added, or the original event if already a multiple of 32.
 // Accounts for padding tag overhead before calculating target size.
@@ -221,18 +289,72 @@ func WrapEvent(originalEvent *nostr.Event, renterPath [][]byte) (*nostr.Event, e
 		logging.DebugMethod("client.wrapper", "WrapEvent", "Completed wrapping layer %d, proceeding to next layer", i)
 	}
 
-	// Check final wrapper event size (after all encryption layers)
-	// Serialize the final wrapper event to check its size
-	finalEventJSON, err := json.Marshal(currentEvent)
+	// After creating all 29000 layers, pad the outermost 29000 to exactly 4KB
+	// and wrap it in a 29001 standardized container addressed to the first Renoter
+	logging.DebugMethod("client.wrapper", "WrapEvent", "Padding outermost 29000 event to %d bytes", config.StandardizedSize)
+	padded29000, err := padEventToExactSize(currentEvent, config.StandardizedSize)
 	if err != nil {
-		logging.Error("client.wrapper.WrapEvent: failed to serialize final wrapper event to check size: %v", err)
-		return nil, fmt.Errorf("failed to serialize final wrapper event: %w", err)
+		logging.Error("client.wrapper.WrapEvent: failed to pad outermost 29000 event: %v", err)
+		return nil, fmt.Errorf("failed to pad outermost 29000 event: %w", err)
 	}
-	finalSize := len(finalEventJSON)
-	if finalSize > MaxWrappedEventSize {
-		logging.Error("client.wrapper.WrapEvent: final wrapped event size %d bytes exceeds maximum %d bytes", finalSize, MaxWrappedEventSize)
-		return nil, fmt.Errorf("final wrapped event size %d bytes exceeds maximum %d bytes", finalSize, MaxWrappedEventSize)
+
+	// Get first Renoter's pubkey for addressing the 29001 container
+	firstRenoterPubkeyBytes := renterPath[0]
+	firstRenoterPubkey := hex.EncodeToString(firstRenoterPubkeyBytes)
+
+	// Serialize the padded 29000 for encryption
+	padded29000JSON, err := json.Marshal(padded29000)
+	if err != nil {
+		logging.Error("client.wrapper.WrapEvent: failed to serialize padded 29000 event: %v", err)
+		return nil, fmt.Errorf("failed to serialize padded 29000 event: %w", err)
 	}
-	logging.Info("client.wrapper.WrapEvent: Successfully wrapped event through %d Renoter layers, final wrapper event ID: %s, size: %d bytes", len(renterPath), currentEvent.ID, finalSize)
-	return currentEvent, nil
+
+	// Generate random key for the 29001 container
+	sk29001 := nostr.GeneratePrivateKey()
+	pubkey29001, err := nostr.GetPublicKey(sk29001)
+	if err != nil {
+		logging.Error("client.wrapper.WrapEvent: failed to get public key for 29001: %v", err)
+		return nil, fmt.Errorf("failed to get public key: %w", err)
+	}
+
+	// Encrypt the padded 29000 for the first Renoter
+	conversationKey29001, err := nip44.GenerateConversationKey(firstRenoterPubkey, sk29001)
+	if err != nil {
+		logging.Error("client.wrapper.WrapEvent: failed to generate conversation key for 29001: %v", err)
+		return nil, fmt.Errorf("failed to generate conversation key: %w", err)
+	}
+
+	ciphertext29001, err := nip44.Encrypt(string(padded29000JSON), conversationKey29001)
+	if err != nil {
+		logging.Error("client.wrapper.WrapEvent: failed to encrypt for 29001: %v", err)
+		return nil, fmt.Errorf("failed to encrypt for 29001: %w", err)
+	}
+
+	// Create 29001 standardized container event
+	standardizedEvent := &nostr.Event{
+		Kind:      config.StandardizedWrapperKind,
+		Content:   ciphertext29001,
+		CreatedAt: nostr.Now(),
+		PubKey:    pubkey29001,
+		Tags: nostr.Tags{
+			// Add "p" tag with first Renoter's pubkey for routing
+			{"p", firstRenoterPubkey},
+		},
+	}
+
+	// Compute ID and sign the 29001 event
+	standardizedEvent.ID = standardizedEvent.GetID()
+	if !standardizedEvent.CheckID() {
+		logging.Error("client.wrapper.WrapEvent: 29001 event ID %s failed CheckID validation", standardizedEvent.ID)
+		return nil, fmt.Errorf("invalid 29001 event ID")
+	}
+
+	err = standardizedEvent.Sign(sk29001)
+	if err != nil {
+		logging.Error("client.wrapper.WrapEvent: failed to sign 29001 event: %v", err)
+		return nil, fmt.Errorf("failed to sign 29001 event: %w", err)
+	}
+
+	logging.Info("client.wrapper.WrapEvent: Successfully wrapped event through %d Renoter layers, created 29001 container, ID: %s", len(renterPath), standardizedEvent.ID)
+	return standardizedEvent, nil
 }
