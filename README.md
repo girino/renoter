@@ -1,6 +1,6 @@
 # Nostr Renoter
 
-**Version: 1.0.0**
+**Version: 1.0.1**
 
 A Nostr relay wrapper system that provides onion-routing encryption for events. The client wraps events using nested encryption (once per Renoter in the path), and Renoter servers decrypt one layer and forward to the next Renoter or final destination.
 
@@ -360,4 +360,12 @@ Original license: http://girino.org/license/
 
 ## Contributing
 
-[Add contribution guidelines here]
+Contributions are welcome! Here's how you can help:
+
+1. **Report Issues**: Open an issue on GitHub to report bugs or suggest features
+2. **Submit Pull Requests**: Fork the repository, make your changes, and submit a PR
+3. **Code Style**: Follow Go conventions and ensure code passes `gofmt`
+4. **Testing**: Add tests for new features and ensure existing tests pass
+5. **Documentation**: Update docs when adding or changing functionality
+
+Keep PRs focused and include a clear description of the changes.
