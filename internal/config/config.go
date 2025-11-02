@@ -12,5 +12,5 @@ const StandardizedWrapperKind = 29001
 const StandardizedSize = 32 * 1024 // 32768 bytes
 
 // PoWDifficulty is the proof-of-work difficulty for 29000 wrapper events (number of leading zero bits required).
-// Default is 20, which requires ~1048576 attempts on average. This can be adjusted to balance spam prevention vs CPU cost.
-const PoWDifficulty = 20
+// Default is 16, which requires ~65536 attempts on average. This can be adjusted to balance spam prevention vs CPU cost.
+const PoWDifficulty = 16
